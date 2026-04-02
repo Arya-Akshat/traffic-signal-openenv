@@ -5,11 +5,11 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-ActionType = Literal["KEEP", "SWITCH"]
+ActionType = Literal["KEEP", "SWITCH", "PHASE_0", "PHASE_1", "PHASE_2", "PHASE_3"]
 
 
 class StepRequest(BaseModel):
-    action: ActionType = Field(..., description="KEEP or SWITCH")
+    action: ActionType = Field(..., description="KEEP, SWITCH, or PHASE_0 to PHASE_3")
 
 
 class Observation(BaseModel):

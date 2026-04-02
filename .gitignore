@@ -8,20 +8,28 @@
 venv/
 
 __pycache__/
+*.pyc
 *.py[cod]
 *.pyo
 *.pyd
+*.tmp
 
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.cache/
 .coverage
 htmlcov/
 dist/
 build/
 *.egg-info/
+*.tar
+
+test_output.txt
+results_*.txt
 
 .vscode/
+.idea/
 
 *.log
 *.sqlite3

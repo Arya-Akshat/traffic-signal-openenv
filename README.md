@@ -14,6 +14,14 @@ The server does not train an RL policy. It exposes deterministic simulation APIs
 Traffic signal optimization aims to reduce queueing and waiting while preserving throughput.
 The environment simulates a 4-direction signalized intersection and returns dense feedback at each step.
 
+## Architecture Overview
+
+```text
+Agent (inference.py) -> FastAPI API -> TrafficEnv -> deterministic traffic simulation
+```
+
+The agent selects actions, the API exposes OpenEnv endpoints, and the environment applies the traffic dynamics.
+
 ## State and Action Space
 
 Observation schema:
@@ -30,7 +38,7 @@ Observation schema:
 Action space:
 
 ```json
-["KEEP", "SWITCH"]
+["KEEP", "SWITCH", "PHASE_0", "PHASE_1", "PHASE_2", "PHASE_3"]
 ```
 
 Invalid actions are rejected by schema validation.
@@ -80,8 +88,9 @@ A simple fixed-signal baseline is useful for sanity checking the environment.
 
 | Approach | Behavior | Strength | Weakness |
 | --- | --- | --- | --- |
-| Fixed signal baseline | Switches on a fixed timer or stays constant | Easy to reproduce | Does not react to traffic spikes |
-| TrafficEnv + agent | Uses KEEP/SWITCH decisions from the agent | Adapts to queue buildup and spikes | Depends on action quality |
+| easy_fixed | Lowest demand, fixed traffic | Highest expected score | Least challenging |
+| medium_dynamic | Random spikes and changing load | Middle expected score | More variance |
+| hard_multi | Multi-intersection with emergency pressure | Lowest expected score | Most difficult |
 
 Recommended comparison in experiments:
 
@@ -123,11 +132,13 @@ BASE_URL=http://127.0.0.1:8000 python inference.py
 
 inference.py reads these variables:
 
-- BASE_URL: environment endpoint base URL (default http://127.0.0.1:8000)
+- BASE_URL: required environment endpoint base URL
 - API_BASE_URL: OpenAI-compatible API base URL
 - MODEL_NAME: model used for action proposal
 - HF_TOKEN: optional bearer token for protected endpoints
 - OPENAI_API_KEY: enables LLM action selection
+
+Set `BASE_URL` before running inference locally or against a deployed Space.
 
 ## Docker Validation
 
