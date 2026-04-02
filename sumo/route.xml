@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<routes>
+  <vType id="car" accel="1.0" decel="4.5" sigma="0.5" length="5.0" maxSpeed="13.9" />
+  <route id="north_south" edges="n0 n1" />
+  <route id="east_west" edges="e0 e1" />
+</routes>

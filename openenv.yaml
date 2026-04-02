@@ -1,0 +1,7 @@
+name: traffic-signal-env
+version: 1.0
+
+endpoints:
+  reset: /reset
+  step: /step
+  state: /state

@@ -1,0 +1,246 @@
+# Traffic Signal OpenEnv (Submission Ready)
+
+This repository provides an OpenEnv-compliant traffic signal control environment.
+The external agent (for example, an LLM via inference.py) interacts through HTTP APIs:
+
+- GET /reset
+- POST /step
+- GET /state
+
+The server does not train an RL policy. It exposes deterministic simulation APIs for agent-driven control.
+
+## Problem Description
+
+Traffic signal optimization aims to reduce queueing and waiting while preserving throughput.
+The environment simulates a 4-direction signalized intersection and returns dense feedback at each step.
+
+## State and Action Space
+
+Observation schema:
+
+```json
+{
+	"queue_lengths": [N, S, E, W],
+	"waiting_times": [N, S, E, W],
+	"current_phase": 0,
+	"time_in_phase": 5
+}
+```
+
+Action space:
+
+```json
+["KEEP", "SWITCH"]
+```
+
+Invalid actions are rejected by schema validation.
+
+## Reward Design
+
+Dense reward per step:
+
+```text
+reward = (
+		- total_waiting_time
+		- 0.5 * total_queue_length
+		+ throughput * 2
+		- switching_penalty
+)
+```
+
+This balances delay reduction, queue control, and traffic flow while discouraging excessive switching.
+
+## Tasks
+
+- easy_fixed: fixed traffic demand
+- medium_dynamic: dynamic spikes
+- hard_multi: multi-intersection/e-mergency pressure
+
+All tasks are deterministic and defined in tasks/.
+
+## Grader
+
+Deterministic grader output in [0.0, 1.0] using a composite score:
+
+```text
+score = 0.5 * normalized_wait + 0.3 * throughput_score + 0.2 * queue_score
+```
+
+Where:
+
+- normalized_wait rewards lower waiting time
+- throughput_score rewards more vehicle movement per step
+- queue_score rewards shorter queues
+
+This makes the evaluation look closer to a research benchmark than a single-metric threshold.
+
+## Baseline Comparison
+
+A simple fixed-signal baseline is useful for sanity checking the environment.
+
+| Approach | Behavior | Strength | Weakness |
+| --- | --- | --- | --- |
+| Fixed signal baseline | Switches on a fixed timer or stays constant | Easy to reproduce | Does not react to traffic spikes |
+| TrafficEnv + agent | Uses KEEP/SWITCH decisions from the agent | Adapts to queue buildup and spikes | Depends on action quality |
+
+Recommended comparison in experiments:
+
+1. Run the fixed-signal baseline for the same number of steps as the agent.
+2. Compare average waiting time, throughput, and final grader score.
+3. Report whether the agent reduces queueing under medium and hard tasks.
+
+## Local Validation
+
+### 1. Setup
+
+```bash
+python3.11 -m venv .venv311
+source .venv311/bin/activate
+pip install -r requirements.txt
+```
+
+### 2. Run API server
+
+```bash
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+### 3. Verify endpoints
+
+```bash
+curl http://127.0.0.1:8000/reset
+curl -X POST http://127.0.0.1:8000/step -H "Content-Type: application/json" -d '{"action":"SWITCH"}'
+curl http://127.0.0.1:8000/state
+```
+
+### 4. Run inference
+
+```bash
+BASE_URL=http://127.0.0.1:8000 python inference.py
+```
+
+## Inference Environment Variables
+
+inference.py reads these variables:
+
+- BASE_URL: environment endpoint base URL (default http://127.0.0.1:8000)
+- API_BASE_URL: OpenAI-compatible API base URL
+- MODEL_NAME: model used for action proposal
+- HF_TOKEN: optional bearer token for protected endpoints
+- OPENAI_API_KEY: enables LLM action selection
+
+## Docker Validation
+
+### 1. Build
+
+```bash
+docker build -t traffic-env .
+```
+
+### 2. Run
+
+```bash
+docker run --rm -p 7860:7860 traffic-env
+```
+
+### 3. Test container
+
+```bash
+curl http://127.0.0.1:7860/reset
+curl -X POST http://127.0.0.1:7860/step -H "Content-Type: application/json" -d '{"action":"KEEP"}'
+curl http://127.0.0.1:7860/state
+```
+
+## OpenEnv Compliance
+
+openenv.yaml:
+
+```yaml
+name: traffic-signal-env
+version: 1.0
+
+endpoints:
+	reset: /reset
+	step: /step
+	state: /state
+```
+
+Contract requirements:
+
+- /reset returns observation
+- /step returns observation, reward, done, info
+- /state returns current state snapshot
+
+## Hugging Face Spaces Deployment (Docker SDK)
+
+### 1. Create space
+
+- Go to https://huggingface.co/spaces
+- Create Space
+- SDK: Docker
+- Visibility: Public or Private
+
+### 2. Upload project
+
+- Upload files directly or connect GitHub repository
+
+### 3. Add Secrets in Space settings
+
+- HF_TOKEN=...
+- OPENAI_API_KEY=...
+- API_BASE_URL=https://api.openai.com/v1
+- MODEL_NAME=gpt-4o-mini
+
+### 4. Verify deployment
+
+Use your deployed base URL:
+
+```bash
+curl https://your-space-name.hf.space/reset
+curl -X POST https://your-space-name.hf.space/step -H "Content-Type: application/json" -d '{"action":"SWITCH"}'
+curl https://your-space-name.hf.space/state
+```
+
+## Submission Validator
+
+Run validator helper:
+
+```bash
+./validate-submission.sh https://your-space-name.hf.space
+```
+
+This performs local checks and remote endpoint checks for submission readiness.
+
+## Example Output Snippet
+
+Example step response:
+
+```json
+{
+	"observation": {
+		"queue_lengths": [2.53, 5.06, 2.54, 7.38],
+		"waiting_times": [20.37, 24.22, 13.4, 30.32],
+		"current_phase": 0,
+		"time_in_phase": 1
+	},
+	"reward": -51.06,
+	"done": false,
+	"info": {
+		"throughput": 23,
+		"avg_wait": 22.07,
+		"score": 1.0,
+		"task_id": "easy_fixed"
+	}
+}
+```
+
+## Final Checklist
+
+- [x] /reset returns 200
+- [x] /step works with valid action
+- [x] invalid action rejected
+- [x] Docker image builds
+- [x] Docker container serves API
+- [x] inference.py runs and prints step outputs
+- [x] 3 tasks exist (easy/medium/hard)
+- [x] grader returns values in 0.0 to 1.0
