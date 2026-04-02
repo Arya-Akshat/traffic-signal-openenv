@@ -1,3 +1,12 @@
+---
+title: Traffic Signal OpenEnv
+emoji: 🚦
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_file: app.main:app
+pinned: false
+---
 # Traffic Signal OpenEnv (Submission Ready)
 
 This repository provides an OpenEnv-compliant traffic signal control environment.

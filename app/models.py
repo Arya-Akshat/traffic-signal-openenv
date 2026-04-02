@@ -35,3 +35,5 @@ class StateResponse(BaseModel):
     step_count: int
     observation: Observation
     metrics: dict
+    episode_throughput: float
+    episode_avg_wait: float
