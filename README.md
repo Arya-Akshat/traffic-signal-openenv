@@ -18,6 +18,10 @@ The external agent (for example, an LLM via inference.py) interacts through HTTP
 
 The server does not train an RL policy. It exposes deterministic simulation APIs for agent-driven control.
 
+Live deployment:
+
+- https://guuru-dev-traffic-signal-openenv.hf.space
+
 ## Problem Description
 
 Traffic signal optimization aims to reduce queueing and waiting while preserving throughput.
@@ -107,14 +111,14 @@ Recommended comparison in experiments:
 2. Compare average waiting time, throughput, and final grader score.
 3. Report whether the agent reduces queueing under medium and hard tasks.
 
-## Local Validation
+## Quick Start (Local)
 
 ### 1. Setup
 
 ```bash
 python3.11 -m venv .venv311
 source .venv311/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 ### 2. Run API server
@@ -127,6 +131,7 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
 ```bash
 curl http://127.0.0.1:8000/reset
+curl "http://127.0.0.1:8000/reset?task_id=medium_dynamic"
 curl -X POST http://127.0.0.1:8000/step -H "Content-Type: application/json" -d '{"action":"SWITCH"}'
 curl http://127.0.0.1:8000/state
 ```
@@ -135,6 +140,50 @@ curl http://127.0.0.1:8000/state
 
 ```bash
 BASE_URL=http://127.0.0.1:8000 python inference.py
+```
+
+## API Usage Notes
+
+### Reset with task switch
+
+You can switch task deterministically at reset time:
+
+```bash
+curl "http://127.0.0.1:8000/reset?task_id=easy_fixed"
+curl "http://127.0.0.1:8000/reset?task_id=medium_dynamic"
+curl "http://127.0.0.1:8000/reset?task_id=hard_multi"
+```
+
+Invalid task IDs return HTTP 400.
+
+### Supported actions
+
+```json
+["KEEP", "SWITCH", "PHASE_0", "PHASE_1", "PHASE_2", "PHASE_3"]
+```
+
+## Full Test and Quality Checks
+
+Run all checks from the repository root:
+
+```bash
+source .venv311/bin/activate
+ruff check .
+black --check .
+pytest -q
+```
+
+Optional formatting fix:
+
+```bash
+black .
+ruff check . --fix
+```
+
+Run deployment validator against a target URL:
+
+```bash
+./validate-submission.sh https://guuru-dev-traffic-signal-openenv.hf.space
 ```
 
 ## Inference Environment Variables
@@ -167,6 +216,7 @@ docker run --rm -p 7860:7860 traffic-env
 
 ```bash
 curl http://127.0.0.1:7860/reset
+curl "http://127.0.0.1:7860/reset?task_id=hard_multi"
 curl -X POST http://127.0.0.1:7860/step -H "Content-Type: application/json" -d '{"action":"KEEP"}'
 curl http://127.0.0.1:7860/state
 ```
@@ -213,12 +263,13 @@ Contract requirements:
 
 ### 4. Verify deployment
 
-Use your deployed base URL:
+Use the deployed base URL:
 
 ```bash
-curl https://your-space-name.hf.space/reset
-curl -X POST https://your-space-name.hf.space/step -H "Content-Type: application/json" -d '{"action":"SWITCH"}'
-curl https://your-space-name.hf.space/state
+curl https://guuru-dev-traffic-signal-openenv.hf.space/reset
+curl "https://guuru-dev-traffic-signal-openenv.hf.space/reset?task_id=medium_dynamic"
+curl -X POST https://guuru-dev-traffic-signal-openenv.hf.space/step -H "Content-Type: application/json" -d '{"action":"SWITCH"}'
+curl https://guuru-dev-traffic-signal-openenv.hf.space/state
 ```
 
 ## Submission Validator
@@ -226,7 +277,7 @@ curl https://your-space-name.hf.space/state
 Run validator helper:
 
 ```bash
-./validate-submission.sh https://your-space-name.hf.space
+./validate-submission.sh https://guuru-dev-traffic-signal-openenv.hf.space
 ```
 
 This performs local checks and remote endpoint checks for submission readiness.
@@ -257,6 +308,7 @@ Example step response:
 ## Final Checklist
 
 - [x] /reset returns 200
+- [x] /reset?task_id=easy_fixed|medium_dynamic|hard_multi switches tasks
 - [x] /step works with valid action
 - [x] invalid action rejected
 - [x] Docker image builds
@@ -264,3 +316,20 @@ Example step response:
 - [x] inference.py runs and prints step outputs
 - [x] 3 tasks exist (easy/medium/hard)
 - [x] grader returns values in 0.0 to 1.0
+
+## GitHub Push Workflow
+
+Use this minimal safe workflow before pushing:
+
+```bash
+git status --short
+git add README.md
+git commit -m "docs: update README with HF link and full run/test guide"
+git push origin main
+```
+
+Safety reminders:
+
+- Never commit real secrets to the repository.
+- Keep API tokens only in local env vars or HF Space Secrets.
+- Ensure .env and virtualenv folders stay gitignored.
