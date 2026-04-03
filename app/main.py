@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from fastapi import FastAPI, HTTPException
 
 from app.config import settings
@@ -12,8 +14,11 @@ env = TrafficEnv(task=settings.task_id, max_steps=settings.max_steps)
 
 
 @app.get("/reset", response_model=ResetResponse)
-def reset() -> dict:
-    observation = env.reset()
+def reset(task_id: Optional[str] = None) -> dict:
+    try:
+        observation = env.reset(task_id=task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"observation": observation}
 
 

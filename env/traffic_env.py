@@ -69,7 +69,16 @@ class TrafficEnv:
         self.random = random.Random(self.task_config.seed)
         self.state_obj: TrafficState | None = None
 
-    def reset(self) -> dict[str, Any]:
+    def reset(self, task_id: str | None = None) -> dict[str, Any]:
+        if task_id is not None:
+            if task_id not in TASK_BUILDERS:
+                raise ValueError(
+                    f"Unknown task '{task_id}'. Expected one of {sorted(TASK_BUILDERS)}"
+                )
+            self.task = task_id
+            self.task_config = TASK_BUILDERS[task_id](
+                max_steps=self.task_config.max_steps
+            )
         self.random.seed(self.task_config.seed)
         init_queues = [round(self.random.uniform(4.0, 14.0), 2) for _ in range(4)]
         init_waits = [
