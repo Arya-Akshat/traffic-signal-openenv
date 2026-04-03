@@ -9,10 +9,10 @@ import requests  # type: ignore[import-untyped]
 
 
 BASE_URL = os.getenv("BASE_URL")
-API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api.example.com/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
 HF_TOKEN = os.getenv("HF_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+MODEL_API_KEY = os.getenv("MODEL_API_KEY")
 
 
 def _build_headers() -> dict[str, str]:
@@ -46,16 +46,10 @@ def _rule_based_action(state: dict[str, Any] | None) -> str:
     return "KEEP"
 
 
-def _llm_action(step_index: int, state: dict[str, Any] | None = None) -> str:
-    if not OPENAI_API_KEY:
+def _model_action(step_index: int, state: dict[str, Any] | None = None) -> str:
+    if not MODEL_API_KEY:
         return _rule_based_action(state)
 
-    try:
-        from openai import OpenAI  # type: ignore[import-not-found]
-    except Exception:
-        return _rule_based_action(state)
-
-    client: Any = OpenAI(api_key=OPENAI_API_KEY, base_url=API_BASE_URL)
     obs = _observation_from_state(state)
     queues = cast(list[float], obs.get("queue_lengths", [0.0, 0.0, 0.0, 0.0]))
     waits = cast(list[float], obs.get("waiting_times", [0.0, 0.0, 0.0, 0.0]))
@@ -89,14 +83,36 @@ Waiting times:  N={waits[0]:.1f}  S={waits[1]:.1f}  E={waits[2]:.1f}  W={waits[3
 Worst lane: {['N','S','E','W'][queues.index(max(queues))]} (queue={max(queues):.1f})
 What action do you choose?"""
 
-    response: Any = client.responses.create(
-        model=MODEL_NAME,
-        input=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    )
-    text = response.output_text.strip().upper()
+    try:
+        response = requests.post(
+            f"{API_BASE_URL.rstrip('/')}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {MODEL_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": MODEL_NAME,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        data = response.json()
+        text = (
+            str(
+                data.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+            )
+            .strip()
+            .upper()
+        )
+    except Exception:
+        return _rule_based_action(state)
+
     for action in ["PHASE_0", "PHASE_1", "PHASE_2", "PHASE_3", "SWITCH", "KEEP"]:
         if action in text:
             return action
@@ -116,7 +132,7 @@ def run() -> None:
     steps = 30
 
     for step_index in range(steps):
-        action = _llm_action(step_index, state)
+        action = _model_action(step_index, state)
         response = requests.post(
             f"{BASE_URL}/step",
             json={"action": action},

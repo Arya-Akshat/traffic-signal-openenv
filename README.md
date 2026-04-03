@@ -7,16 +7,16 @@ sdk: docker
 app_file: app.main:app
 pinned: false
 ---
-# Traffic Signal OpenEnv (Submission Ready)
+# Traffic Signal OpenEnv
 
 This repository provides an OpenEnv-compliant traffic signal control environment.
-The external agent (for example, an LLM via inference.py) interacts through HTTP APIs:
+An external controller client (for example, `inference.py`) interacts through HTTP APIs:
 
 - GET /reset
 - POST /step
 - GET /state
 
-The server does not train an RL policy. It exposes deterministic simulation APIs for agent-driven control.
+The server does not train an RL policy. It exposes deterministic simulation APIs for controller-driven control.
 
 Live deployment:
 
@@ -30,10 +30,10 @@ The environment simulates a 4-direction signalized intersection and returns dens
 ## Architecture Overview
 
 ```text
-Agent (inference.py) -> FastAPI API -> TrafficEnv -> deterministic traffic simulation
+Controller client (inference.py) -> FastAPI API -> TrafficEnv -> deterministic traffic simulation
 ```
 
-The agent selects actions, the API exposes OpenEnv endpoints, and the environment applies the traffic dynamics.
+The controller selects actions, the API exposes OpenEnv endpoints, and the environment applies the traffic dynamics.
 
 ## State and Action Space
 
@@ -107,9 +107,9 @@ A simple fixed-signal baseline is useful for sanity checking the environment.
 
 Recommended comparison in experiments:
 
-1. Run the fixed-signal baseline for the same number of steps as the agent.
+1. Run the fixed-signal baseline for the same number of steps as the controller.
 2. Compare average waiting time, throughput, and final grader score.
-3. Report whether the agent reduces queueing under medium and hard tasks.
+3. Report whether the controller reduces queueing under medium and hard tasks.
 
 ## Quick Start (Local)
 
@@ -191,10 +191,10 @@ Run deployment validator against a target URL:
 inference.py reads these variables:
 
 - BASE_URL: required environment endpoint base URL
-- API_BASE_URL: OpenAI-compatible API base URL
+- API_BASE_URL: model API base URL
 - MODEL_NAME: model used for action proposal
 - HF_TOKEN: optional bearer token for protected endpoints
-- OPENAI_API_KEY: enables LLM action selection
+- MODEL_API_KEY: enables model-based action selection
 
 Set `BASE_URL` before running inference locally or against a deployed Space.
 
@@ -257,7 +257,7 @@ Contract requirements:
 ### 3. Add Secrets in Space settings
 
 - HF_TOKEN=...
-- OPENAI_API_KEY=...
+- MODEL_API_KEY=...
 - API_BASE_URL=https://api.openai.com/v1
 - MODEL_NAME=gpt-4o-mini
 
