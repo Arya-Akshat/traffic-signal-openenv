@@ -111,6 +111,14 @@ Recommended comparison in experiments:
 2. Compare average waiting time, throughput, and final grader score.
 3. Report whether the controller reduces queueing under medium and hard tasks.
 
+Baseline score table:
+
+| Task | Fixed-signal baseline | Rule-based controller | Notes |
+| --- | --- | --- | --- |
+| easy_fixed | High | Very high | Lowest demand, easiest to stabilize |
+| medium_dynamic | Medium | High | Demand spikes reward responsive phase changes |
+| hard_multi | Low | Medium | Multi-intersection pressure makes coordination harder |
+
 ## Quick Start (Local)
 
 ### 1. Setup
@@ -194,7 +202,8 @@ inference.py reads these variables:
 - API_BASE_URL: model API base URL
 - MODEL_NAME: model used for action proposal
 - HF_TOKEN: optional bearer token for protected endpoints
-- MODEL_API_KEY: enables model-based action selection
+- OPENAI_API_KEY: optional alternative model API key
+- The judge sets HF_TOKEN and API_BASE_URL=https://router.huggingface.co/v1
 
 Set `BASE_URL` before running inference locally or against a deployed Space.
 

@@ -6,13 +6,14 @@ import os
 from typing import Any, cast
 
 import requests  # type: ignore[import-untyped]
+from openai import OpenAI
 
 
 BASE_URL = os.getenv("BASE_URL")
-API_BASE_URL = os.getenv("API_BASE_URL", "https://api.example.com/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
+API_BASE_URL = os.getenv("API_BASE_URL")
+MODEL_NAME = os.getenv("MODEL_NAME")
 HF_TOKEN = os.getenv("HF_TOKEN")
-MODEL_API_KEY = os.getenv("MODEL_API_KEY")
+API_KEY = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
 
 
 def _build_headers() -> dict[str, str]:
@@ -46,9 +47,11 @@ def _rule_based_action(state: dict[str, Any] | None) -> str:
     return "KEEP"
 
 
-def _model_action(step_index: int, state: dict[str, Any] | None = None) -> str:
-    if not MODEL_API_KEY:
+def _llm_action(step_index: int, state: dict[str, Any] | None = None) -> str:
+    if not API_KEY:
         return _rule_based_action(state)
+
+    client: Any = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
 
     obs = _observation_from_state(state)
     queues = cast(list[float], obs.get("queue_lengths", [0.0, 0.0, 0.0, 0.0]))
@@ -84,32 +87,14 @@ Worst lane: {['N','S','E','W'][queues.index(max(queues))]} (queue={max(queues):.
 What action do you choose?"""
 
     try:
-        response = requests.post(
-            f"{API_BASE_URL.rstrip('/')}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {MODEL_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": MODEL_NAME,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-            },
-            timeout=30,
+        response: Any = client.responses.create(
+            model=MODEL_NAME,
+            input=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
         )
-        response.raise_for_status()
-        data = response.json()
-        text = (
-            str(
-                data.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-            )
-            .strip()
-            .upper()
-        )
+        text = response.output_text.strip().upper()
     except Exception:
         return _rule_based_action(state)
 
@@ -132,7 +117,7 @@ def run() -> None:
     steps = 30
 
     for step_index in range(steps):
-        action = _model_action(step_index, state)
+        action = _llm_action(step_index, state)
         response = requests.post(
             f"{BASE_URL}/step",
             json={"action": action},
