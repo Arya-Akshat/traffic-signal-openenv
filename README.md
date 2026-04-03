@@ -199,11 +199,7 @@ Run deployment validator against a target URL:
 inference.py reads these variables:
 
 - BASE_URL: required environment endpoint base URL
-- API_BASE_URL: model API base URL
-- MODEL_NAME: model used for action proposal
 - HF_TOKEN: optional bearer token for protected endpoints
-- OPENAI_API_KEY: optional alternative model API key
-- The judge sets HF_TOKEN and API_BASE_URL=https://router.huggingface.co/v1
 
 Set `BASE_URL` before running inference locally or against a deployed Space.
 
@@ -266,9 +262,6 @@ Contract requirements:
 ### 3. Add Secrets in Space settings
 
 - HF_TOKEN=...
-- MODEL_API_KEY=...
-- API_BASE_URL=https://api.openai.com/v1
-- MODEL_NAME=gpt-4o-mini
 
 ### 4. Verify deployment
 
