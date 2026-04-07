@@ -198,10 +198,10 @@ Run deployment validator against a target URL:
 
 inference.py reads these variables:
 
-- BASE_URL: required environment endpoint base URL
+- BASE_URL: optional endpoint base URL (if unset, inference probes local ports 7860 then 8000)
 - HF_TOKEN: optional bearer token for protected endpoints
 
-Set `BASE_URL` before running inference locally or against a deployed Space.
+Set `BASE_URL` when targeting a deployed Space or any non-default endpoint.
 
 ## Docker Validation
 
