@@ -1,6 +1,7 @@
 FROM ghcr.io/astral-sh/uv:python3.11-bookworm
 
 WORKDIR /app
+RUN echo "BUILD $(date)"
 RUN echo "FORCE BUILD $(date)"
 COPY . /app
 

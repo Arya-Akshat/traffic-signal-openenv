@@ -36,6 +36,7 @@ def grade(metrics):
     except Exception:
         score = 0.5
 
+    # force float safely
     try:
         score = float(score)
     except Exception:
@@ -55,4 +56,4 @@ def grade(metrics):
     elif score >= 1.0:
         score = 0.99
 
-    return score
+    return float(score)
