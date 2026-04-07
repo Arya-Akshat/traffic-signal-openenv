@@ -3,12 +3,17 @@ from __future__ import annotations
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportMissingImports=false
 
 import os
+import json
 from typing import Any, cast
 
 import requests  # type: ignore[import-untyped]
+from openai import OpenAI
 
 
+API_BASE_URL = os.getenv("API_BASE_URL")
+MODEL_NAME = os.getenv("MODEL_NAME")
 HF_TOKEN = os.getenv("HF_TOKEN")
+API_KEY = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
 ENV_URL = os.getenv("ENV_URL", "https://guuru-dev-traffic-signal-openenv.hf.space")
 
 
@@ -48,6 +53,47 @@ def _select_action(step_index: int, state: dict[str, Any] | None = None) -> str:
     return _rule_based_action(state)
 
 
+def _resolve_client() -> OpenAI | None:
+    missing = []
+    if not API_BASE_URL:
+        missing.append("API_BASE_URL")
+    if not MODEL_NAME:
+        missing.append("MODEL_NAME")
+    if not API_KEY:
+        missing.append("HF_TOKEN or OPENAI_API_KEY")
+
+    if missing:
+        print("Missing required environment variables: " + ", ".join(missing))
+        return None
+
+    try:
+        return OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    except Exception as exc:  # pragma: no cover
+        print(f"Failed to initialize OpenAI client: {exc}")
+        return None
+
+
+def _action_from_llm(client: OpenAI, observation: dict[str, Any]) -> str:
+    action = "KEEP"
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": "You are a traffic signal controller."},
+                {"role": "user", "content": str(observation)},
+            ],
+        )
+        content = response.choices[0].message.content or ""
+        try:
+            output = json.loads(content)
+            action = str(output.get("action", "KEEP"))
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return action
+
+
 def _request_json(
     method: str,
     url: str,
@@ -70,6 +116,9 @@ def _request_json(
 
 def run() -> None:
     env_url = ENV_URL.rstrip("/")
+    client = _resolve_client()
+    if client is None:
+        return
 
     headers = _build_headers()
     try:
@@ -83,7 +132,10 @@ def run() -> None:
     steps = 30
 
     for step_index in range(steps):
-        action = _select_action(step_index, state)
+        observation = _observation_from_state(state)
+        action = _action_from_llm(client, observation)
+        if not action:
+            action = _select_action(step_index, state)
         try:
             result = _request_json(
                 "POST",
