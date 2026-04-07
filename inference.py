@@ -121,8 +121,6 @@ def _request_json(
 def run() -> None:
     env_url = ENV_URL.rstrip("/")
     client = _resolve_client()
-    if client is None:
-        return
 
     headers = _build_headers()
     try:
@@ -142,7 +140,10 @@ def run() -> None:
 
     for step_index in range(steps):
         observation = _observation_from_state(state)
-        action = _action_from_llm(client, observation)
+        if client is not None:
+            action = _action_from_llm(client, observation)
+        else:
+            action = ""
         if not action:
             action = _select_action(step_index, state)
         try:
