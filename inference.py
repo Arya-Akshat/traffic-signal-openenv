@@ -116,72 +116,81 @@ def run() -> None:
     client = _resolve_client()
     
     headers = _build_headers()
-    try:
-        state = _request_json("POST", f"{env_url}/reset", headers=headers)
-    except (requests.RequestException, ValueError) as exc:
-        log_event("END", {"task": "unknown", "score": 0.5, "steps": 0})
-        return
-
-    task_id = "easy_fixed"
-    if isinstance(state, dict):
-        task_id = str(state.get("task_id", "easy_fixed"))
-    log_event("START", {"task": task_id})
-
-    total_score = 0.0
-    total_throughput = 0
-    steps = 30
-    step_count = 0
-    last_score = 0.5
-
-    for step_index in range(steps):
-        observation = _observation_from_state(state)
-        if client is not None:
-            action = _action_from_llm(client, observation)
-        else:
-            action = ""
-        if not action:
-            action = _select_action(step_index, state)
+    
+    task_ids = ["easy_fixed", "medium_dynamic", "hard_multi"]
+    
+    for current_task_id in task_ids:
         try:
-            result = _request_json(
-                "POST",
-                f"{env_url}/step",
+            state = _request_json(
+                "POST", 
+                f"{env_url}/reset", 
                 headers=headers,
-                payload={"action": action},
+                payload={"task_id": current_task_id}
             )
         except (requests.RequestException, ValueError) as exc:
-            break
-
-        state = result
-        reward = float(result.get("reward", 0.0))
-        done = bool(result.get("done", False))
-        score = result.get("info", {}).get("score", 0.5)
-        throughput = result.get("info", {}).get("throughput", 0)
-        total_score += score
-        total_throughput += throughput
-        step_count = step_index + 1
-        last_score = score
+            log_event("END", {"task": current_task_id, "score": 0.5, "steps": 0})
+            continue
+    
+        task_id = current_task_id
+        if isinstance(state, dict):
+            task_id = str(state.get("task_id", current_task_id))
+        log_event("START", {"task": task_id})
+    
+        total_score = 0.0
+        total_throughput = 0
+        steps = 30
+        step_count = 0
+        last_score = 0.5
+    
+        for step_index in range(steps):
+            observation = _observation_from_state(state)
+            if client is not None:
+                action = _action_from_llm(client, observation)
+            else:
+                action = ""
+            if not action:
+                action = _select_action(step_index, state)
+            try:
+                result = _request_json(
+                    "POST",
+                    f"{env_url}/step",
+                    headers=headers,
+                    payload={"action": action},
+                )
+            except (requests.RequestException, ValueError) as exc:
+                break
+    
+            state = result
+            reward = float(result.get("reward", 0.0))
+            done = bool(result.get("done", False))
+            score = result.get("info", {}).get("score", 0.5)
+            throughput = result.get("info", {}).get("throughput", 0)
+            total_score += score
+            total_throughput += throughput
+            step_count = step_index + 1
+            last_score = score
+            log_event(
+                "STEP",
+                {
+                    "step": step_count,
+                    "action": action,
+                    "reward": reward,
+                    "score": score,
+                    "done": done,
+                },
+            )
+    
+        _ = total_score
+        _ = total_throughput
+        _ = steps
         log_event(
-            "STEP",
+            "END",
             {
-                "step": step_count,
-                "action": action,
-                "reward": reward,
-                "score": score,
-                "done": done,
+                "task": task_id,
+                "score": last_score,
+                "steps": step_count,
             },
         )
-
-    _ = total_score
-    _ = total_throughput
-    _ = steps
-    log_event(
-        "END",
-        {
-            "task": task_id,
-            "score": last_score,
-            "steps": step_count,
-        },
-    )
 
 
 if __name__ == "__main__":
