@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from env.types import TrafficTask
+from graders.grader import grade
 
 
 def get_hard_task(max_steps: int = 200) -> TrafficTask:
@@ -17,4 +18,5 @@ def get_hard_task(max_steps: int = 200) -> TrafficTask:
         emergency_lane=1,
         emergency_multiplier=4.5,
         multi_intersection=True,
+        grader=grade,
     )

@@ -6,7 +6,6 @@ import math
 import random
 
 from app.config import settings
-from graders.grader import grade
 from tasks.task_easy import get_easy_task
 from tasks.task_hard import get_hard_task
 from tasks.task_medium import get_medium_task
@@ -148,10 +147,11 @@ class TrafficEnv:
         metrics = self._metrics(throughput=throughput, switched=switched)
         reward = self._reward(metrics, switched)
         observation = self._observation()
+        grader_fn = self.task_config.grader or (lambda metrics: 0.0)
         info = {
             "throughput": throughput,
             "avg_wait": metrics["avg_wait"],
-            "score": grade(metrics),
+            "score": grader_fn(metrics),
             "task_id": self.task_config.task_id,
             "episode_throughput": self.state_obj.total_throughput,
             "episode_avg_wait": round(

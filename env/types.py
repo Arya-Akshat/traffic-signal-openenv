@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 
 @dataclass(frozen=True)
@@ -17,3 +18,4 @@ class TrafficTask:
     emergency_lane: int | None = None
     emergency_multiplier: float = 1.0
     multi_intersection: bool = False
+    grader: Callable[[dict], float] | None = None

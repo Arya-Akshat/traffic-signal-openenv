@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from env.types import TrafficTask
+from graders.grader import grade
 
 
 def get_easy_task(max_steps: int = 200) -> TrafficTask:
@@ -11,4 +12,5 @@ def get_easy_task(max_steps: int = 200) -> TrafficTask:
         seed=7,
         arrival_base=(2.0, 1.5, 1.0, 1.8),
         arrival_jitter=(0.1, 0.1, 0.05, 0.08),
+        grader=grade,
     )
