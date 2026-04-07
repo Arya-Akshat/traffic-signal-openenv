@@ -25,7 +25,7 @@ async def reset(request: Request, task_id: Optional[str] = None) -> dict:
         observation = env.reset(task_id=task_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"observation": observation}
+    return {"observation": observation, "task_id": env.task_config.task_id}
 
 
 @app.post("/step", response_model=StepResponse)

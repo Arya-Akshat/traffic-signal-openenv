@@ -93,12 +93,9 @@ class TrafficEnv:
 
     def step(self, action: str) -> tuple[dict[str, Any], float, bool, dict[str, Any]]:
         self._ensure_reset()
-        try:
-            action = str(action).upper().strip()
-            if action not in VALID_ACTIONS:
-                raise ValueError(f"action must be one of {sorted(VALID_ACTIONS)}")
-        except Exception:
-            action = ACTION_KEEP
+        action = str(action).upper().strip()
+        if action not in VALID_ACTIONS:
+            raise ValueError(f"action must be one of {sorted(VALID_ACTIONS)}")
 
         assert self.state_obj is not None
         previous_phase = self.state_obj.current_phase

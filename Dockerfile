@@ -5,6 +5,8 @@ RUN echo "BUILD $(date)"
 RUN echo "FORCE BUILD $(date)"
 COPY . /app
 
+ENV PYTHONPATH=/app
+
 RUN python -m pip install -r requirements.txt
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]

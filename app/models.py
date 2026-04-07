@@ -21,6 +21,7 @@ class Observation(BaseModel):
 
 class ResetResponse(BaseModel):
     observation: Observation
+    task_id: str
 
 
 class StepResponse(BaseModel):
