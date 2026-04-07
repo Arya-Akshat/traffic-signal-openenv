@@ -18,4 +18,4 @@ def grade(metrics: dict) -> float:
     queue_score = 1.0 - _clamp(total_queue_length / 30.0)
 
     score = 0.5 * normalized_wait + 0.3 * throughput_score + 0.2 * queue_score
-    return round(_clamp(score), 4)
+    return round(_clamp(score, 0.001, 0.999), 4)
