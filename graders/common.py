@@ -36,7 +36,6 @@ def grade(metrics):
     except Exception:
         score = 0.5
 
-    # ensure float
     try:
         score = float(score)
     except Exception:
@@ -50,7 +49,7 @@ def grade(metrics):
     if score == float("inf") or score == float("-inf"):
         score = 0.5
 
-    # STRICT RANGE ENFORCEMENT
+    # STRICT CLAMP (never 0 or 1)
     if score <= 0.0:
         score = 0.01
     elif score >= 1.0:

@@ -10,10 +10,9 @@ import requests  # type: ignore[import-untyped]
 from openai import OpenAI
 
 
-API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4.1-mini")
 HF_TOKEN = os.getenv("HF_TOKEN")
-API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("HF_TOKEN")
 ENV_URL = os.getenv("ENV_URL", "https://guuru-dev-traffic-signal-openenv.hf.space")
 
 
@@ -60,15 +59,11 @@ def _select_action(step_index: int, state: dict[str, Any] | None = None) -> str:
 
 
 def _resolve_client() -> OpenAI | None:
-    missing = []
-    if not API_KEY:
-        missing.append("OPENAI_API_KEY or HF_TOKEN")
-
-    if missing:
+    if not HF_TOKEN:
         return None
 
     try:
-        return OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+        return OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
     except Exception as exc:  # pragma: no cover
         return None
 

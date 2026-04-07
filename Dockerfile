@@ -1,7 +1,8 @@
 FROM ghcr.io/astral-sh/uv:python3.11-bookworm
 
 WORKDIR /app
-COPY . .
+RUN echo "FORCE BUILD $(date)"
+COPY . /app
 
 RUN python -m pip install -r requirements.txt
 
