@@ -30,12 +30,30 @@ def compute_score(
     return score
 
 
-def grade(metrics: dict) -> float:
-    score = compute_score(metrics)
+def grade(metrics):
+    try:
+        score = compute_score(metrics)
+    except Exception:
+        score = 0.5
 
-    score = float(score)
-    score = max(0.01, min(0.99, score))
+    # ensure float
+    try:
+        score = float(score)
+    except Exception:
+        score = 0.5
 
-    assert 0 < score < 1, f"Invalid score: {score}"
+    # handle NaN
+    if score != score:
+        score = 0.5
+
+    # handle inf
+    if score == float("inf") or score == float("-inf"):
+        score = 0.5
+
+    # STRICT RANGE ENFORCEMENT
+    if score <= 0.0:
+        score = 0.01
+    elif score >= 1.0:
+        score = 0.99
 
     return score

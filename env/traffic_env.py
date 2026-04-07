@@ -147,11 +147,12 @@ class TrafficEnv:
         metrics = self._metrics(throughput=throughput, switched=switched)
         reward = self._reward(metrics, switched)
         observation = self._observation()
-        grader_fn = self.task_config.grader or (lambda metrics: 0.5)
+        assert self.task_config.grader is not None, "Grader missing"
+        grader = self.task_config.grader
         info = {
             "throughput": throughput,
             "avg_wait": metrics["avg_wait"],
-            "score": grader_fn(metrics),
+            "score": grader(metrics),
             "task_id": self.task_config.task_id,
             "episode_throughput": self.state_obj.total_throughput,
             "episode_avg_wait": round(
