@@ -10,10 +10,10 @@ import requests  # type: ignore[import-untyped]
 from openai import OpenAI
 
 
-API_BASE_URL = os.getenv("API_BASE_URL")
-MODEL_NAME = os.getenv("MODEL_NAME")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
 HF_TOKEN = os.getenv("HF_TOKEN")
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
+API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("HF_TOKEN")
 ENV_URL = os.getenv("ENV_URL", "https://guuru-dev-traffic-signal-openenv.hf.space")
 
 
@@ -61,12 +61,8 @@ def _select_action(step_index: int, state: dict[str, Any] | None = None) -> str:
 
 def _resolve_client() -> OpenAI | None:
     missing = []
-    if not API_BASE_URL:
-        missing.append("API_BASE_URL")
-    if not MODEL_NAME:
-        missing.append("MODEL_NAME")
     if not API_KEY:
-        missing.append("HF_TOKEN or OPENAI_API_KEY")
+        missing.append("OPENAI_API_KEY or HF_TOKEN")
 
     if missing:
         return None
@@ -121,15 +117,18 @@ def _request_json(
 def run() -> None:
     env_url = ENV_URL.rstrip("/")
     client = _resolve_client()
+    task_id = None
+    log_event("START", {"task_id": task_id})
 
     headers = _build_headers()
     try:
         state = _request_json("POST", f"{env_url}/reset", headers=headers)
     except (requests.RequestException, ValueError) as exc:
+        log_event("END", {"total_steps": 0, "final_reward": 0.0, "done": False})
         return
 
-    task_id = state.get("task_id") if isinstance(state, dict) else None
-    log_event("START", {"task_id": task_id})
+    if isinstance(state, dict):
+        task_id = state.get("task_id")
 
     total_score = 0.0
     total_throughput = 0
