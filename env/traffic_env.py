@@ -93,9 +93,12 @@ class TrafficEnv:
 
     def step(self, action: str) -> tuple[dict[str, Any], float, bool, dict[str, Any]]:
         self._ensure_reset()
-        action = action.upper().strip()
-        if action not in VALID_ACTIONS:
-            raise ValueError(f"action must be one of {sorted(VALID_ACTIONS)}")
+        try:
+            action = str(action).upper().strip()
+            if action not in VALID_ACTIONS:
+                raise ValueError(f"action must be one of {sorted(VALID_ACTIONS)}")
+        except Exception:
+            action = ACTION_KEEP
 
         assert self.state_obj is not None
         previous_phase = self.state_obj.current_phase
@@ -149,10 +152,23 @@ class TrafficEnv:
         observation = self._observation()
         assert self.task_config.grader is not None, "Grader missing"
         grader = self.task_config.grader
+        score = grader(metrics)
+        if score is None:
+            score = 0.5
+        try:
+            score = float(score)
+        except Exception:
+            score = 0.5
+        if score != score:
+            score = 0.5
+        if score <= 0.0:
+            score = 0.01
+        elif score >= 1.0:
+            score = 0.99
         info = {
             "throughput": throughput,
             "avg_wait": metrics["avg_wait"],
-            "score": grader(metrics),
+            "score": score,
             "task_id": self.task_config.task_id,
             "episode_throughput": self.state_obj.total_throughput,
             "episode_avg_wait": round(
