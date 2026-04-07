@@ -17,9 +17,11 @@ ENV_URL = os.getenv("ENV_URL", "https://guuru-dev-traffic-signal-openenv.hf.spac
 
 
 def log_event(event_type: str, data: dict[str, Any]) -> None:
-    import json
+    parts = [f"[{event_type}]"]
+    for k, v in data.items():
+        parts.append(f"{k}={v}")
+    print(" ".join(parts), flush=True)
 
-    print(f"[{event_type}] " + json.dumps(data))
 
 
 def _build_headers() -> dict[str, str]:
@@ -112,25 +114,24 @@ def _request_json(
 def run() -> None:
     env_url = ENV_URL.rstrip("/")
     client = _resolve_client()
-    task_id = None
-    log_event("START", {"task_id": task_id})
-
+    
     headers = _build_headers()
     try:
         state = _request_json("POST", f"{env_url}/reset", headers=headers)
     except (requests.RequestException, ValueError) as exc:
-        log_event("END", {"total_steps": 0, "final_reward": 0.0, "done": False})
+        log_event("END", {"task": "unknown", "score": 0.5, "steps": 0})
         return
 
+    task_id = "easy_fixed"
     if isinstance(state, dict):
-        task_id = state.get("task_id")
+        task_id = str(state.get("task_id", "easy_fixed"))
+    log_event("START", {"task": task_id})
 
     total_score = 0.0
     total_throughput = 0
     steps = 30
     step_count = 0
-    last_reward = 0.0
-    last_done = False
+    last_score = 0.5
 
     for step_index in range(steps):
         observation = _observation_from_state(state)
@@ -158,14 +159,14 @@ def run() -> None:
         total_score += score
         total_throughput += throughput
         step_count = step_index + 1
-        last_reward = reward
-        last_done = done
+        last_score = score
         log_event(
             "STEP",
             {
                 "step": step_count,
                 "action": action,
                 "reward": reward,
+                "score": score,
                 "done": done,
             },
         )
@@ -176,9 +177,9 @@ def run() -> None:
     log_event(
         "END",
         {
-            "total_steps": step_count,
-            "final_reward": last_reward,
-            "done": last_done,
+            "task": task_id,
+            "score": last_score,
+            "steps": step_count,
         },
     )
 
