@@ -153,7 +153,7 @@ def run() -> None:
         state = result
         reward = float(result.get("reward", 0.0))
         done = bool(result.get("done", False))
-        score = result.get("info", {}).get("score", 0.0)
+        score = result.get("info", {}).get("score", 0.5)
         throughput = result.get("info", {}).get("throughput", 0)
         total_score += score
         total_throughput += throughput
