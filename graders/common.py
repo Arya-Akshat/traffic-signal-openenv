@@ -11,9 +11,14 @@ def compute_score(
     throughput_norm: float = 20.0,
     queue_norm: float = 30.0,
 ) -> float:
-    avg_wait = float(metrics.get("avg_wait", 0.0))
-    throughput = float(metrics.get("throughput", 0.0))
-    total_queue_length = float(metrics.get("total_queue_length", 0.0))
+    avg_wait = float(metrics.get("avg_wait", 0.0) or 0.0)
+    throughput = float(metrics.get("throughput", 0.0) or 0.0)
+    total_queue_length = float(metrics.get("total_queue_length", 0.0) or 0.0)
+
+    # prevent invalid math
+    avg_wait = max(avg_wait, 0.0)
+    throughput = max(throughput, 0.0)
+    total_queue_length = max(total_queue_length, 0.0)
 
     normalized_wait = 1.0 - _clamp(avg_wait / wait_norm)
     throughput_score = _clamp(throughput / throughput_norm)
@@ -21,11 +26,26 @@ def compute_score(
 
     score = 0.5 * normalized_wait + 0.3 * throughput_score + 0.2 * queue_score
 
-    score = float(score)
+    try:
+        score = float(score)
+    except Exception:
+        score = 0.5
 
-    # STRICT clamp
-    score = max(0.01, min(0.99, score))
-    assert 0 < score < 1, f"Invalid score: {score}"
+    # NaN check
+    if score != score:
+        score = 0.5
+
+    # Inf check
+    if score == float("inf") or score == float("-inf"):
+        score = 0.5
+
+    # STRICT VALIDATOR RANGE
+    if score <= 0.0:
+        score = 0.01
+    elif score >= 1.0:
+        score = 0.99
+
+    assert 0 < score < 1
 
     return score
 
@@ -56,4 +76,5 @@ def grade(metrics):
     elif score >= 1.0:
         score = 0.99
 
-    return float(score)
+    assert 0 < score < 1
+    return score
