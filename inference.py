@@ -17,6 +17,12 @@ API_KEY = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
 ENV_URL = os.getenv("ENV_URL", "https://guuru-dev-traffic-signal-openenv.hf.space")
 
 
+def log_event(event_type: str, data: dict[str, Any]) -> None:
+    import json
+
+    print(f"[{event_type}] " + json.dumps(data))
+
+
 def _build_headers() -> dict[str, str]:
     headers: dict[str, str] = {}
     if HF_TOKEN:
@@ -63,13 +69,11 @@ def _resolve_client() -> OpenAI | None:
         missing.append("HF_TOKEN or OPENAI_API_KEY")
 
     if missing:
-        print("Missing required environment variables: " + ", ".join(missing))
         return None
 
     try:
         return OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
     except Exception as exc:  # pragma: no cover
-        print(f"Failed to initialize OpenAI client: {exc}")
         return None
 
 
@@ -124,12 +128,17 @@ def run() -> None:
     try:
         state = _request_json("POST", f"{env_url}/reset", headers=headers)
     except (requests.RequestException, ValueError) as exc:
-        print(f"Failed to initialize episode from {env_url}: {exc}")
         return
+
+    task_id = state.get("task_id") if isinstance(state, dict) else None
+    log_event("START", {"task_id": task_id})
 
     total_score = 0.0
     total_throughput = 0
     steps = 30
+    step_count = 0
+    last_reward = 0.0
+    last_done = False
 
     for step_index in range(steps):
         observation = _observation_from_state(state)
@@ -144,26 +153,43 @@ def run() -> None:
                 payload={"action": action},
             )
         except (requests.RequestException, ValueError) as exc:
-            print(f"Step {step_index} failed for action {action}: {exc}")
             break
 
         state = result
+        reward = float(result.get("reward", 0.0))
+        done = bool(result.get("done", False))
         score = result.get("info", {}).get("score", 0.0)
         throughput = result.get("info", {}).get("throughput", 0)
         total_score += score
         total_throughput += throughput
-        print(
-            f"step={step_index:02d} action={action:<10} score={score:.4f} throughput={throughput} avg_wait={result.get('info',{}).get('avg_wait',0):.2f}"
+        step_count = step_index + 1
+        last_reward = reward
+        last_done = done
+        log_event(
+            "STEP",
+            {
+                "step": step_count,
+                "action": action,
+                "reward": reward,
+                "done": done,
+            },
         )
 
-    print("\n--- Episode Summary ---")
-    print(f"Mean score:       {total_score / steps:.4f}")
-    print(f"Total throughput: {total_throughput}")
+    _ = total_score
+    _ = total_throughput
+    _ = steps
+    log_event(
+        "END",
+        {
+            "total_steps": step_count,
+            "final_reward": last_reward,
+            "done": last_done,
+        },
+    )
 
 
 if __name__ == "__main__":
     try:
         run()
     except Exception as exc:  # pragma: no cover
-        # Final safety net to avoid unhandled exceptions in validator runs.
-        print(f"Inference failed with handled error: {exc}")
+        pass
