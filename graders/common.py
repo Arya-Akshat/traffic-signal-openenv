@@ -7,9 +7,9 @@ def _clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
 
 def compute_score(
     metrics: dict,
-    wait_norm: float,
-    throughput_norm: float,
-    queue_norm: float,
+    wait_norm: float = 40.0,
+    throughput_norm: float = 20.0,
+    queue_norm: float = 30.0,
 ) -> float:
     avg_wait = float(metrics.get("avg_wait", 0.0))
     throughput = float(metrics.get("throughput", 0.0))
@@ -21,10 +21,21 @@ def compute_score(
 
     score = 0.5 * normalized_wait + 0.3 * throughput_score + 0.2 * queue_score
 
-    # Clamp strictly inside (0, 1) for validator compatibility.
-    if score <= 0.0:
-        score = 0.01
-    elif score >= 1.0:
-        score = 0.99
+    score = float(score)
 
-    return float(round(score, 4))
+    # STRICT clamp
+    score = max(0.01, min(0.99, score))
+    assert 0 < score < 1, f"Invalid score: {score}"
+
+    return score
+
+
+def grade(metrics: dict) -> float:
+    score = compute_score(metrics)
+
+    score = float(score)
+    score = max(0.01, min(0.99, score))
+
+    assert 0 < score < 1, f"Invalid score: {score}"
+
+    return score

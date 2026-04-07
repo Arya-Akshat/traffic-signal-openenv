@@ -147,7 +147,7 @@ class TrafficEnv:
         metrics = self._metrics(throughput=throughput, switched=switched)
         reward = self._reward(metrics, switched)
         observation = self._observation()
-        grader_fn = self.task_config.grader or (lambda metrics: 0.0)
+        grader_fn = self.task_config.grader or (lambda metrics: 0.5)
         info = {
             "throughput": throughput,
             "avg_wait": metrics["avg_wait"],
