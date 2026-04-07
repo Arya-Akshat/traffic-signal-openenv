@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from env.types import TrafficTask
-from graders.grader import grade
+from graders.grader_medium import grade
 
 
 def get_medium_task(max_steps: int = 200) -> TrafficTask:

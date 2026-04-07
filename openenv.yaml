@@ -5,3 +5,11 @@ endpoints:
   reset: /reset
   step: /step
   state: /state
+
+tasks:
+  - id: easy_fixed
+    grader: graders/grader_easy.py:grade
+  - id: medium_dynamic
+    grader: graders/grader_medium.py:grade
+  - id: hard_multi
+    grader: graders/grader_hard.py:grade
