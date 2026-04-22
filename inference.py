@@ -7,7 +7,30 @@ from typing import Any, cast
 
 import requests  # type: ignore[import-untyped]
 from openai import OpenAI
-from env.traffic_env import MIN_HOLD_STEPS, NODE_PERSONALITIES, ROUTES
+# ---------------------------------------------------------------------------
+# Section 1: Constants & Environment Config (Independent from Server)
+# ---------------------------------------------------------------------------
+
+MIN_HOLD_STEPS = 3
+INTERSECTIONS = ("NW", "NE", "SW", "SE")
+
+ROUTES = {
+    ("NW", 3): ("NE", 3),
+    ("NW", 0): ("SW", 0),
+    ("NE", 1): ("NW", 1),
+    ("NE", 0): ("SE", 0),
+    ("SW", 3): ("SE", 3),
+    ("SW", 2): ("NW", 2),
+    ("SE", 1): ("SW", 1),
+    ("SE", 2): ("NE", 2),
+}
+
+NODE_PERSONALITIES = {
+    "NW": {"role": "corridor_entry", "queue": 1.25, "wait": 0.9, "throughput": 1.0, "downstream": 1.35, "emergency": 0.7},
+    "NE": {"role": "bottleneck", "queue": 0.95, "wait": 1.0, "throughput": 0.9, "downstream": 1.7, "emergency": 0.8},
+    "SW": {"role": "emergency_prone", "queue": 1.0, "wait": 1.15, "throughput": 0.95, "downstream": 1.0, "emergency": 2.3},
+    "SE": {"role": "outflow_sink", "queue": 1.1, "wait": 0.95, "throughput": 1.2, "downstream": 1.5, "emergency": 0.9},
+}
 
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")

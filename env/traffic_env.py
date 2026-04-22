@@ -1124,12 +1124,16 @@ class TrafficEnv:
         switch_var = _variance(switches)
         stability = 1.0 - (policy_var + switch_var) / 2.0
 
+        all_starvations = [s for state in self.state_obj.intersections.values() for s in state.time_since_served]
+        max_starvation = max(all_starvations) if all_starvations else 0.0
+
         return {
             "travel_time_mean": tt_mean,
             "travel_time_variance": tt_var,
             "throughput_efficiency": efficiency,
             "fairness_score": fairness,
             "stability_index": stability,
+            "max_starvation_time": float(max_starvation),
         }
 
     def _reward(self, metrics: dict[str, float], adv_metrics: dict[str, float]) -> tuple[float, dict[str, float]]:
@@ -1289,6 +1293,7 @@ class TrafficEnv:
         return "\n".join(lines)[:995]
 
     def episode_summary(self) -> dict[str, Any]:
+        from graders.common import compute_detailed_rubrics, compute_score
         assert self.state_obj is not None
         steps = max(self.state_obj.step_count, 1)
         node_queue_totals = [sum(state.queue_lengths) for state in self.state_obj.intersections.values()]
@@ -1297,7 +1302,7 @@ class TrafficEnv:
         # Episode-level advanced metrics
         adv = self._advanced_metrics(self.state_obj.total_throughput / steps, {n: False for n in INTERSECTIONS})
         
-        return {
+        summary = {
             "episode_reward": round(self.state_obj.episode_reward_sum, 4),
             "mean_queue": round(self.state_obj.episode_queue_sum / steps, 4),
             "mean_wait": round(self.state_obj.episode_wait_sum / steps, 4),
@@ -1317,9 +1322,16 @@ class TrafficEnv:
             "throughput_efficiency": round(adv["throughput_efficiency"], 4),
             "fairness_score": round(adv["fairness_score"], 4),
             "stability_index": round(adv["stability_index"], 4),
+            "max_starvation_time": round(adv["max_starvation_time"], 4),
             "recovery_time": self.state_obj.final_recovery_time,
             "text_obs": self.format_central_llm_prompt(),
         }
+        
+        # Phase 11: Add Rubrics to summary
+        rubrics = compute_detailed_rubrics(summary)
+        summary.update(rubrics)
+        summary["final_score"] = compute_score(summary)
+        return summary
 
     def _turn_ratios(self, node: str) -> tuple[float, float, float]:
         ratios = getattr(self.task_config, "turn_ratios", {}).get(node, (0.25, 0.55, 0.2))

@@ -1,10 +1,30 @@
 name: traffic-signal-env
-version: "1.0"
+description: Hierarchical Multi-Agent Traffic Orchestration Benchmark with Central Oversight and Deterministic Incidents.
+version: "1.1"
+entry_point: app.main:app
+deterministic: true
+multi_agent: true
+reward_range: [-1.0, 1.0]
+
+observation_space:
+  type: dict
+  spaces:
+    queue_lengths: {type: Box, low: 0, high: 24, shape: [4, 4]}
+    waiting_times: {type: Box, low: 0, high: 1000, shape: [4, 4]}
+    current_phase: {type: Discrete, n: 4}
+    time_in_phase: {type: Discrete, n: 100}
+    central_enabled: {type: Discrete, n: 2}
+
+action_space:
+  type: Discrete
+  n: 6
+  actions: [KEEP, SWITCH, PHASE_0, PHASE_1, PHASE_2, PHASE_3]
 
 endpoints:
   reset: /reset
   step: /step
   state: /state
+  metadata: /metadata
 
 tasks:
   - id: easy_fixed
@@ -13,3 +33,18 @@ tasks:
     grader: graders.grader_medium:grade
   - id: hard_multi
     grader: graders.grader_hard:grade
+  - id: gridlock_risk
+    grader: graders.grader_gridlock:grade
+  - id: corridor_flow
+    grader: graders.grader_corridor:grade
+  - id: incident_response
+    grader: graders.grader_incident:grade
+  - id: dynamic_demand
+    grader: graders.grader_dynamic:grade
+
+themes:
+  - "Theme 1: Multi-Agent Interactions"
+  - "Theme 2: Long-Horizon Planning"
+  - "Theme 4: Self-Improvement"
+  - "Sub-theme: Fleet AI Scalable Oversight"
+  - "Sub-theme: Halluminate Multi-Actor"

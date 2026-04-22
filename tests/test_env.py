@@ -32,6 +32,13 @@ REQUIRED_SUMMARY_KEYS = {
     "fairness_score",
     "stability_index",
     "recovery_time",
+    "max_starvation_time",
+    "rubric_local_efficiency",
+    "rubric_global_coordination",
+    "rubric_throughput",
+    "rubric_emergency_response",
+    "rubric_stability",
+    "rubric_fairness",
 }
 
 REQUIRED_STEP_INFO_KEYS = {
