@@ -26,6 +26,12 @@ REQUIRED_SUMMARY_KEYS = {
     "corridor_sync_score",
     "active_behaviors_log",
     "text_obs",
+    "travel_time_mean",
+    "travel_time_variance",
+    "throughput_efficiency",
+    "fairness_score",
+    "stability_index",
+    "recovery_time",
 }
 
 REQUIRED_STEP_INFO_KEYS = {

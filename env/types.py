@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 
@@ -11,6 +11,16 @@ class DemandPulse:
     node: str | None = None
     lane: int | None = None
     multiplier: float = 1.0
+
+
+@dataclass(frozen=True)
+class Incident:
+    intersection_id: str
+    lane_id: int
+    incident_type: str
+    start_step: int
+    duration: int
+    severity: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -38,4 +48,8 @@ class TrafficTask:
     emergency_lane: int | None = None
     emergency_multiplier: float = 1.0
     multi_intersection: bool = False
+    turn_ratios: dict[str, tuple[float, float, float]] = field(default_factory=dict)
+    lane_capacities: dict[str, tuple[float, float, float, float]] = field(default_factory=dict)
+    incidents: tuple[Incident, ...] = ()
+    total_priority_budget: float = 3.0
     grader: Callable[[dict], float] | None = None

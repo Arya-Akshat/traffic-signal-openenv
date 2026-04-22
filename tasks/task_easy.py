@@ -15,6 +15,12 @@ def get_easy_task(max_steps: int = 200) -> TrafficTask:
         directional_bias=(1.05, 0.95, 1.0, 1.0),
         initial_queue_bounds=(2.0, 6.0),
         lane_capacity=22.0,
+        lane_capacities={
+            "NW": (40.0, 40.0, 40.0, 40.0),
+            "NE": (40.0, 40.0, 40.0, 40.0),
+            "SW": (40.0, 40.0, 40.0, 40.0),
+            "SE": (40.0, 40.0, 40.0, 40.0),
+        },
         service_base=4.5,
         green_bonus=5.5,
         red_penalty=1.2,
@@ -28,5 +34,11 @@ def get_easy_task(max_steps: int = 200) -> TrafficTask:
             DemandPulse(55, 65, node="NW", lane=3, multiplier=1.2),
             DemandPulse(80, 88, node="SE", lane=1, multiplier=1.15),
         ),
+        turn_ratios={
+            "NW": (0.25, 0.55, 0.20),
+            "NE": (0.22, 0.58, 0.20),
+            "SW": (0.24, 0.56, 0.20),
+            "SE": (0.23, 0.57, 0.20),
+        },
         grader=grade,
     )

@@ -54,8 +54,44 @@ def score_phase(
     obs: dict[str, Any],
 ) -> float:
     pers = NODE_PERSONALITIES.get(node, {})
-    queue = float(local_qs[phase])
+    
+    # 1. One-step lookahead scoring
+    current_q = float(local_qs[phase])
+    # Estimate clearance: base (3.5) + green bonus (4.7) ≈ 8.2 if phase is current, else 0
+    # Estimate arrivals: average across lanes ≈ 4.0
+    expected_clearance = 8.2 if phase == current_phase else 0.0
+    if obs.get("central_enabled"):
+        expected_clearance *= 1.25 # Central coordination improves clearance efficiency
+    expected_arrivals = 4.0
+    simulated_next_queue = max(0.0, current_q - expected_clearance + expected_arrivals)
+    
+    queue_term = min(1.0, simulated_next_queue / 18.0) * policy.get("queue_urgency_weight", 1.0) * float(pers.get("queue", 1.0))
     wait = float(local_ws[phase])
+    wait_term = min(1.0, wait / 28.0) * float(pers.get("wait", 1.0))
+    throughput_term = min(current_q, 7.0) / 7.0 * float(pers.get("throughput", 1.0))
+
+    # 2. Phase memory & oscillation penalty
+    switch_penalty = policy.get("switch_penalty", 1.0)
+    history = obs.get("phase_history", {}).get(node, [current_phase, current_phase, current_phase])
+    oscillation_penalty = 0.0
+    if len(history) >= 2 and phase != current_phase:
+        # If we switch to 'p', and history was [p, current_phase, p]
+        if history[-2] == phase:
+            oscillation_penalty = switch_penalty * 1.5
+
+    if phase != current_phase and time_in_phase < MIN_HOLD_STEPS:
+        switch_term = -(switch_penalty + 2.4 + oscillation_penalty)
+    elif phase != current_phase:
+        switch_term = -(0.7 * switch_penalty + oscillation_penalty)
+    else:
+        switch_term = 0.35 + min(0.25, time_in_phase * 0.04)
+
+    # 3. Fairness constraint & starvation prevention
+    fairness_weight = 0.45
+    if obs.get("central_enabled"):
+        fairness_weight *= 1.8 # Central oversight prioritizes fairness and starvation prevention
+    time_since_served = obs.get("time_since_served", {}).get(node, [0.0]*4)[phase]
+    fairness_term = fairness_weight * max(0.0, float(time_since_served) - 8.0)
 
     downstream_queue = 0.0
     if (node, phase) in ROUTES:
@@ -69,17 +105,6 @@ def score_phase(
     mean_load = 0.0
     if isinstance(network_queues, dict) and network_queues:
         mean_load = sum(sum(float(v) for v in lanes) for lanes in network_queues.values()) / len(network_queues)
-
-    queue_term = min(1.0, queue / 18.0) * policy.get("queue_urgency_weight", 1.0) * float(pers.get("queue", 1.0))
-    wait_term = min(1.0, wait / 28.0) * float(pers.get("wait", 1.0))
-    throughput_term = min(queue, 7.0) / 7.0 * float(pers.get("throughput", 1.0))
-
-    if phase != current_phase and time_in_phase < MIN_HOLD_STEPS:
-        switch_term = -(policy.get("switch_penalty", 1.0) + 2.4)
-    elif phase != current_phase:
-        switch_term = -0.7 * policy.get("switch_penalty", 1.0)
-    else:
-        switch_term = 0.35 + min(0.25, time_in_phase * 0.04)
 
     downstream_term = -min(1.4, downstream_queue / 16.0) * float(pers.get("downstream", 1.0)) * policy.get("balance_penalty", 1.0)
     balance_term = -min(1.0, abs(node_load - mean_load) / 26.0) * policy.get("balance_penalty", 1.0) * 0.65
@@ -101,6 +126,7 @@ def score_phase(
         + emergency_term
         + downstream_term
         + balance_term
+        + fairness_term
     )
 
 
@@ -195,8 +221,10 @@ def run_episode(
     task_id: str,
     central_enabled: bool,
     client: OpenAI | None,
-) -> dict[str, Any]:
+    export_metrics: bool = False,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Run a complete episode either via the server or locally."""
+    episode_log: list[dict[str, Any]] = []
     try:
         state = _request_json(
             "POST",
@@ -204,10 +232,10 @@ def run_episode(
             headers=headers,
             payload={"task_id": task_id, "central_enabled": central_enabled},
         )
-        max_steps = 300  # generous upper bound; episode terminates on done
+        max_steps = 300
         final_info: dict[str, Any] = {}
 
-        for _ in range(max_steps):
+        for i in range(max_steps):
             observation = _observation_from_state(state)
             action_payload: dict[str, Any] = {}
             if client is not None:
@@ -216,33 +244,49 @@ def run_episode(
                 action_payload = {"local_actions": _rule_based_action(state)}
 
             result = _request_json("POST", f"{env_url}/step", headers=headers, payload=action_payload)
+            if export_metrics:
+                episode_log.append({
+                    "step": i,
+                    "observation": observation,
+                    "action": action_payload,
+                    "reward": result.get("reward"),
+                    "info": result.get("info"),
+                    "policy": observation.get("policy")
+                })
             state = result
             done = bool(result.get("done", False))
             final_info = result.get("info", {})
             if done:
                 break
 
-        return final_info
+        return final_info, episode_log
 
     except Exception:
-        # Fall back to local environment if server is unavailable
         from env.traffic_env import TrafficEnv
-
         env = TrafficEnv(task=task_id)
         obs = env.reset(central_enabled=central_enabled)
-        max_steps = env.task_config.max_steps  # run full episode
+        max_steps = env.task_config.max_steps
         final_info = {}
         state_dict: dict[str, Any] = {"observation": obs}
 
-        for _ in range(max_steps):
+        for i in range(max_steps):
             action_payload = {"local_actions": _rule_based_action(state_dict)}
             obs, reward, done, info = env.step(action_payload)
+            if export_metrics:
+                episode_log.append({
+                    "step": i,
+                    "observation": obs,
+                    "action": action_payload,
+                    "reward": reward,
+                    "info": info,
+                    "policy": obs.get("policy")
+                })
             state_dict = {"observation": obs}
             final_info = info
             if done:
                 break
 
-        return final_info
+        return final_info, episode_log
 
 
 # ---------------------------------------------------------------------------
@@ -321,29 +365,105 @@ def run() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--task", default="hard_multi", help="Task ID to run")
     parser.add_argument("--compare", action="store_true", help="Run ablation comparison (central ON vs OFF)")
+    parser.add_argument("--export-metrics", action="store_true", help="Export episode metrics to JSON/CSV")
+    parser.add_argument("--curriculum", action="store_true", help="Run adaptive curriculum loop")
     args = parser.parse_args()
 
     env_url = ENV_URL.rstrip("/")
     client = _resolve_client()
     headers = _build_headers()
 
-    if args.compare:
+    if args.curriculum:
+        _run_curriculum(env_url, headers, client)
+    elif args.compare:
         print(f"\n>>> Running ablation on task [{args.task}] ...")
 
         print("  [1/2] Central OFF ...")
-        info_off = run_episode(env_url, headers, args.task, central_enabled=False, client=client)
+        info_off, _ = run_episode(env_url, headers, args.task, central_enabled=False, client=client, export_metrics=args.export_metrics)
 
         print("  [2/2] Central ON  ...")
-        info_on = run_episode(env_url, headers, args.task, central_enabled=True, client=client)
+        info_on, log_on = run_episode(env_url, headers, args.task, central_enabled=True, client=client, export_metrics=args.export_metrics)
 
         _format_comparison(info_off, info_on)
+        if args.export_metrics and log_on:
+            _do_export(log_on, args.task)
     else:
         print(f"=== Running Task: {args.task} ===")
-        info = run_episode(env_url, headers, args.task, central_enabled=True, client=client)
+        info, log = run_episode(env_url, headers, args.task, central_enabled=True, client=client, export_metrics=args.export_metrics)
         summary = info.get("summary", info)
         for k, v in sorted(summary.items()):
             if k != "active_behaviors_log" and k != "text_obs":
                 print(f"  {k}: {v}")
+        if args.export_metrics and log:
+            _do_export(log, args.task)
+
+def _do_export(log: list[dict[str, Any]], task_id: str) -> None:
+    from env.metrics_exporter import (
+        export_episode_to_json, export_episode_to_csv,
+        export_policy_trace, export_queue_trace
+    )
+    os.makedirs("metrics", exist_ok=True)
+    export_episode_to_json(log, f"metrics/{task_id}_log.json")
+    
+    csv_log = []
+    for entry in log:
+        row = {k: v for k, v in entry.items() if not isinstance(v, (dict, list))}
+        if "info" in entry:
+            row.update({k: v for k, v in entry["info"].items() if not isinstance(v, (dict, list))})
+        csv_log.append(row)
+    
+    export_episode_to_csv(csv_log, f"metrics/{task_id}_metrics.csv")
+    export_policy_trace(log, f"metrics/{task_id}_policy.csv")
+    export_queue_trace(log, f"metrics/{task_id}_queues.csv")
+    print(f"\n>>> Metrics exported to metrics/ directory.")
+
+def _run_curriculum(env_url: str, headers: dict[str, str], client: OpenAI | None) -> None:
+    tasks = [
+        "easy_fixed", "medium_dynamic", "hard_multi", 
+        "corridor_flow", "dynamic_demand", "incident_response", "gridlock_risk"
+    ]
+    current_idx = 0
+    history = []
+    
+    print("\n" + "="*50)
+    print(" ADAPTIVE CURRICULUM RUNNER ".center(50, "="))
+    print("="*50)
+
+    while current_idx < len(tasks):
+        task = tasks[current_idx]
+        print(f"\n>>> Current Level [{current_idx+1}/{len(tasks)}]: {task}")
+        info, _ = run_episode(env_url, headers, task, central_enabled=True, client=client)
+        score = float(info.get("summary", info).get("final_score", 0.0))
+        history.append((task, score))
+        
+        print(f"    Score: {score:.4f}")
+        
+        if score > 0.8:
+            print("    [!] Performance EXCELLENT. Advancing...")
+            current_idx += 1
+            if current_idx >= len(tasks):
+                print("    [!] REACHED PEAK PERFORMANCE. Curriculum Complete.")
+                break
+        elif score < 0.4:
+            print("    [!] Performance POOR. Stepping down...")
+            current_idx = max(0, current_idx - 1)
+        else:
+            print("    [!] Performance STABLE. Staying at current level.")
+            # To avoid infinite loops in stable state, we could advance after N tries
+            # but for now we'll just advance if they get > 0.8
+            # User didn't specify what to do if stable. I'll just end after 10 episodes total.
+            if len(history) >= 10:
+                break
+
+    print("\n" + "="*50)
+    print(" CURRICULUM PROGRESSION TABLE ".center(50, "-"))
+    print("-" * 50)
+    print(f"  {'#':<3} | {'Task ID':<20} | {'Final Score':>12}")
+    print("-" * 50)
+    for i, (t, s) in enumerate(history):
+        print(f"  {i+1:<3} | {t:<20} | {s:>12.4f}")
+    print("=" * 50 + "\n")
+
 
 
 if __name__ == "__main__":

@@ -15,6 +15,12 @@ def get_medium_task(max_steps: int = 200) -> TrafficTask:
         directional_bias=(1.35, 0.92, 0.82, 1.45),
         initial_queue_bounds=(4.0, 9.0),
         lane_capacity=24.0,
+        lane_capacities={
+            "NW": (30.0, 30.0, 30.0, 30.0),
+            "NE": (30.0, 30.0, 30.0, 30.0),
+            "SW": (30.0, 30.0, 30.0, 30.0),
+            "SE": (30.0, 30.0, 30.0, 30.0),
+        },
         service_base=4.0,
         green_bonus=5.0,
         red_penalty=1.45,
@@ -30,6 +36,12 @@ def get_medium_task(max_steps: int = 200) -> TrafficTask:
             DemandPulse(58, 84, node="SE", lane=1, multiplier=2.1),
             DemandPulse(104, 130, node="NW", lane=0, multiplier=1.7),
         ),
+        turn_ratios={
+            "NW": (0.27, 0.53, 0.20),
+            "NE": (0.24, 0.56, 0.20),
+            "SW": (0.25, 0.54, 0.21),
+            "SE": (0.23, 0.56, 0.21),
+        },
         multi_intersection=True,
         grader=grade,
     )

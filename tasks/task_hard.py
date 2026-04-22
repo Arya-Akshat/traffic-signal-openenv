@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from env.types import DemandPulse, TrafficTask
+from env.types import DemandPulse, Incident, TrafficTask
 from graders.grader_hard import grade
 
 
@@ -15,6 +15,12 @@ def get_hard_task(max_steps: int = 200) -> TrafficTask:
         directional_bias=(1.4, 0.9, 0.8, 1.65),
         initial_queue_bounds=(7.0, 13.0),
         lane_capacity=23.0,
+        lane_capacities={
+            "NW": (20.0, 20.0, 20.0, 20.0),
+            "NE": (20.0, 18.0, 20.0, 18.0),
+            "SW": (20.0, 20.0, 20.0, 20.0),
+            "SE": (20.0, 18.0, 20.0, 18.0),
+        },
         service_base=3.5,
         green_bonus=4.7,
         red_penalty=1.8,
@@ -37,6 +43,17 @@ def get_hard_task(max_steps: int = 200) -> TrafficTask:
         emergency_step=28,
         emergency_lane=1,
         emergency_multiplier=4.5,
+        turn_ratios={
+            "NW": (0.29, 0.51, 0.20),
+            "NE": (0.31, 0.49, 0.20),
+            "SW": (0.23, 0.55, 0.22),
+            "SE": (0.24, 0.54, 0.22),
+        },
+        incidents=(
+            Incident("NE", 0, "LANE_CLOSURE", start_step=34, duration=14, severity=0.7),
+            Incident("SE", 1, "DEMAND_SURGE", start_step=62, duration=16, severity=1.0),
+        ),
         multi_intersection=True,
+        total_priority_budget=8.0,
         grader=grade,
     )
