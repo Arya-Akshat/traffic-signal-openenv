@@ -16,9 +16,22 @@ observation_space:
     central_enabled: {type: Discrete, n: 2}
 
 action_space:
-  type: Discrete
-  n: 6
-  actions: [KEEP, SWITCH, PHASE_0, PHASE_1, PHASE_2, PHASE_3]
+  type: dict
+  spaces:
+    local_actions:
+      type: dict
+      values:
+        type: Discrete
+        n: 6
+        actions: [KEEP, SWITCH, PHASE_0, PHASE_1, PHASE_2, PHASE_3]
+    central_action:
+      type: dict
+      values:
+        type: Box
+        low: 0.0
+        high: 2.0
+        shape: [6]
+        keys: [corridor_priority, balance_penalty, emergency_boost, switch_penalty, queue_urgency_weight, green_extension]
 
 endpoints:
   reset: /reset
