@@ -5,76 +5,54 @@ def _clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
     return max(lower, min(upper, value))
 
 
-def compute_score(
-    metrics: dict,
-    wait_norm: float = 40.0,
-    throughput_norm: float = 20.0,
-    queue_norm: float = 30.0,
-) -> float:
-    avg_wait = float(metrics.get("avg_wait", 0.0) or 0.0)
+def _positive_score(value: float, bound: float) -> float:
+    return _clamp(value / max(bound, 1e-6))
+
+
+def _negative_score(value: float, bound: float) -> float:
+    return 1.0 - _clamp(value / max(bound, 1e-6))
+
+
+def compute_score(metrics: dict) -> float:
+    mean_wait = float(metrics.get("mean_wait", metrics.get("avg_wait", 0.0)) or 0.0)
+    mean_queue = float(metrics.get("mean_queue", metrics.get("total_queue_length", 0.0)) or 0.0)
     throughput = float(metrics.get("throughput", 0.0) or 0.0)
-    total_queue_length = float(metrics.get("total_queue_length", 0.0) or 0.0)
+    imbalance = float(metrics.get("imbalance", 0.0) or 0.0)
+    emergency_delay = float(metrics.get("emergency_delay", 0.0) or 0.0)
+    spillback_events = float(
+        metrics.get("spillback_count", metrics.get("spillback_events_count", 0.0)) or 0.0
+    )
+    corridor_sync = float(metrics.get("corridor_sync_score", 0.0) or 0.0)
+    policy_stability = float(metrics.get("policy_stability", 0.0) or 0.0)
 
-    # prevent invalid math
-    avg_wait = max(avg_wait, 0.0)
-    throughput = max(throughput, 0.0)
-    total_queue_length = max(total_queue_length, 0.0)
+    wait_score = _negative_score(mean_wait, 170.0)
+    queue_score = _negative_score(mean_queue, 130.0)
+    throughput_score = _positive_score(throughput, 140.0)
+    imbalance_score = _negative_score(imbalance, 25.0)
+    emergency_score = _negative_score(emergency_delay, 30000.0)
+    spillback_score = _negative_score(spillback_events, 60.0)
+    corridor_score = _clamp(corridor_sync)
+    stability_score = _clamp(policy_stability)
 
-    normalized_wait = 1.0 - _clamp(avg_wait / wait_norm)
-    throughput_score = _clamp(throughput / throughput_norm)
-    queue_score = 1.0 - _clamp(total_queue_length / queue_norm)
+    score = (
+        0.20 * wait_score
+        + 0.18 * queue_score
+        + 0.18 * throughput_score
+        + 0.10 * imbalance_score
+        + 0.18 * emergency_score
+        + 0.06 * spillback_score
+        + 0.06 * corridor_score
+        + 0.04 * stability_score
+    )
+    return max(0.01, min(0.99, float(score)))
 
-    score = 0.5 * normalized_wait + 0.3 * throughput_score + 0.2 * queue_score
 
+def grade(metrics: dict) -> float:
     try:
-        score = float(score)
+        score = float(compute_score(metrics))
     except Exception:
         score = 0.5
 
-    # NaN check
-    if score != score:
+    if score != score or score in {float("inf"), float("-inf")}:
         score = 0.5
-
-    # Inf check
-    if score == float("inf") or score == float("-inf"):
-        score = 0.5
-
-    # STRICT VALIDATOR RANGE
-    if score <= 0.0:
-        score = 0.01
-    elif score >= 1.0:
-        score = 0.99
-
-    assert 0 < score < 1
-
-    return score
-
-
-def grade(metrics):
-    try:
-        score = compute_score(metrics)
-    except Exception:
-        score = 0.5
-
-    # force float safely
-    try:
-        score = float(score)
-    except Exception:
-        score = 0.5
-
-    # handle NaN
-    if score != score:
-        score = 0.5
-
-    # handle inf
-    if score == float("inf") or score == float("-inf"):
-        score = 0.5
-
-    # STRICT CLAMP (never 0 or 1)
-    if score <= 0.0:
-        score = 0.01
-    elif score >= 1.0:
-        score = 0.99
-
-    assert 0 < score < 1
-    return score
+    return max(0.01, min(0.99, score))

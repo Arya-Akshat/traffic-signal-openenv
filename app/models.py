@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -9,19 +9,24 @@ ActionType = Literal["KEEP", "SWITCH", "PHASE_0", "PHASE_1", "PHASE_2", "PHASE_3
 
 
 class StepRequest(BaseModel):
-    action: ActionType = Field(..., description="KEEP, SWITCH, or PHASE_0 to PHASE_3")
+    action: Optional[ActionType] = Field(None, description="KEEP, SWITCH, or PHASE_0 to PHASE_3 (Legacy)")
+    local_actions: Optional[dict[str, ActionType]] = Field(None, description="Actions per intersection")
+    central_action: Optional[dict[str, float]] = Field(None, description="Updates to policy vector")
 
 
 class Observation(BaseModel):
-    queue_lengths: list[float]
-    waiting_times: list[float]
-    current_phase: int
-    time_in_phase: int
+    queue_lengths: dict[str, list[float]] | list[float]
+    waiting_times: dict[str, list[float]] | list[float]
+    current_phase: dict[str, int] | int
+    time_in_phase: dict[str, int] | int
+    policy: Optional[dict[str, float]] = None
+    text_obs: Optional[str] = None
 
 
 class ResetResponse(BaseModel):
     observation: Observation
     task_id: str
+    central_enabled: bool = False
 
 
 class StepResponse(BaseModel):
@@ -38,3 +43,4 @@ class StateResponse(BaseModel):
     metrics: dict
     episode_throughput: float
     episode_avg_wait: float
+    central_enabled: bool = False

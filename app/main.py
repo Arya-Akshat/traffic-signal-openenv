@@ -14,24 +14,30 @@ env = TrafficEnv(task=settings.task_id, max_steps=settings.max_steps)
 
 
 @app.api_route("/reset", methods=["GET", "POST"], response_model=ResetResponse)
-async def reset(request: Request, task_id: Optional[str] = None) -> dict:
+async def reset(request: Request, task_id: Optional[str] = None, central_enabled: Optional[bool] = None) -> dict:
     if request.method == "POST":
         try:
             body = await request.json()
             task_id = body.get("task_id", task_id)
+            if central_enabled is None:
+                central_enabled = body.get("central_enabled", None)
         except Exception:
             pass
+            
+    if central_enabled is None:
+        central_enabled = False
+        
     try:
-        observation = env.reset(task_id=task_id)
+        observation = env.reset(task_id=task_id, central_enabled=central_enabled)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"observation": observation, "task_id": env.task_config.task_id}
+    return {"observation": observation, "task_id": env.task_config.task_id, "central_enabled": env.central_enabled}
 
 
 @app.post("/step", response_model=StepResponse)
 def step(payload: StepRequest) -> dict:
     try:
-        observation, reward, done, info = env.step(payload.action)
+        observation, reward, done, info = env.step(payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
