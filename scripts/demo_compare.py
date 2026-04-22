@@ -42,6 +42,7 @@ def format_change(off_val, on_val, reverse=False):
     return f"{symbol} {abs(diff):.1f}%"
 
 def main():
+    print("Note: Running against rule-based baseline policy. LLM-trained policy results will be available post onsite training.")
     print(f"\n>>> [PITCH DEMO] Orchestrating Traffic Coordination: Task [{TASK_ID}]")
     
     print("    Running Central OFF (Baseline)...")

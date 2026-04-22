@@ -67,8 +67,7 @@ Through our **11-Phase Refactor**, we achieved a massive performance gap demonst
 - **Medium Task Improvement**: **+23%**.
 - **Recovery Efficiency**: The system recovers from incidents (lane closures) 40% faster under central guidance.
 
-![Reward Curve](plots/reward_curve.png)
-*View complete analysis in the `plots/` directory.*
+*(Training curve — to be generated onsite (April 25–26) using HF A100/H100 compute credits. Plotting pipeline already integrated.)*
 
 ---
 
