@@ -22,7 +22,7 @@ except ImportError:
     print("Warning: RL dependencies (trl, unsloth, wandb) not found. Install with: pip install trl unsloth wandb")
 
 # Configuration
-ENV_URL = os.getenv("ENV_URL", "http://localhost:7860")
+ENV_URL = os.getenv("ENV_URL", "https://guuru-dev-traffic-signal-openenv-2.hf.space")
 
 def reward_fn(prompts, completions, **kwargs):
     """Reward function that interacts with the OpenEnv API."""

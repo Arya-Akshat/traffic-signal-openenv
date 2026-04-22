@@ -14,7 +14,7 @@ pinned: false
 
 Traffic Signal OpenEnv is a high-fidelity, hierarchical traffic-light orchestration platform. It is designed to test an LLM's ability to act as a **Central Controller**, managing grid-level policy vectors to optimize flow across multiple local agents.
 
-Live deployment: [Hugging Face Space](https://YOUR_HF_SPACE_URL.hf.space)
+Live deployment: [Hugging Face Space](https://guuru-dev-traffic-signal-openenv-2.hf.space)
 
 ---
 
