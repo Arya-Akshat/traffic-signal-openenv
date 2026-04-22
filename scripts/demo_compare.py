@@ -4,7 +4,7 @@ import json
 import time
 
 # Configuration
-ENV_URL = os.getenv("ENV_URL", "http://localhost:7860")
+ENV_URL = os.getenv("ENV_URL", "https://guuru-dev-traffic-signal-openenv-2.hf.space")
 TASK_ID = "hard_multi"
 
 def run_episode(central_enabled: bool):
