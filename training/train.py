@@ -32,6 +32,7 @@ except Exception:
 
 DEFAULT_ENV_URL = "https://guuru-dev-traffic-signal-openenv-2.hf.space"
 ENV_URL = DEFAULT_ENV_URL
+MODEL_NAME = "unsloth/Llama-3.2-3B-Instruct"
 
 
 def find_local_env_port() -> str:
@@ -201,7 +202,7 @@ def train(args: argparse.Namespace) -> None:
 
     PatchFastRL("GRPO", FastLanguageModel)
     model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name="unsloth/Llama-3.2-1B-Instruct",
+        model_name=MODEL_NAME,
         max_seq_length=1024,
         dtype=torch.bfloat16 if (torch.cuda.is_available() and torch.cuda.get_device_capability(0)[0] >= 8) else None,
         load_in_4bit=True,
