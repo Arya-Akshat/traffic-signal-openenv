@@ -15,8 +15,15 @@ import numpy as np
 import requests
 import torch
 from datasets import Dataset
-from trl import GRPOConfig, GRPOTrainer
 from unsloth import FastLanguageModel, PatchFastRL
+try:
+    from trl import GRPOConfig, GRPOTrainer
+except Exception as exc:
+    raise RuntimeError(
+        "Failed to import TRL GRPO modules. Install missing deps with: "
+        "pip install 'transformers==4.44.2' 'trl==0.19.1' "
+        "'llm-blender==0.0.2' 'mergekit>=0.0.4' 'tokenizers<0.20'"
+    ) from exc
 
 try:
     import wandb
@@ -57,7 +64,7 @@ def safe_post(url: str, payload: dict[str, Any], retries: int = 16, timeout: int
     raise RuntimeError(f"Failed after {retries} retries: {url}")
 
 
-def parse_action(completion: str) -> dict[str, Any]:
+def parse_action(completion: str) -> tuple[dict[str, Any], bool]:
     valid = {"KEEP", "SWITCH", "PHASE_0", "PHASE_1", "PHASE_2", "PHASE_3"}
     base = {"NW": "KEEP", "NE": "KEEP", "SW": "KEEP", "SE": "KEEP"}
     try:
@@ -68,7 +75,7 @@ def parse_action(completion: str) -> dict[str, Any]:
             for key in ("NW", "NE", "SW", "SE"):
                 raw_val = str(raw_local.get(key, "KEEP")).upper().strip() if isinstance(raw_local, dict) else "KEEP"
                 clean_local[key] = raw_val if raw_val in valid else "KEEP"
-            return {"local_actions": clean_local, "central_action": {}}
+            return {"local_actions": clean_local, "central_action": {}}, False
     except Exception:
         pass
 
@@ -81,7 +88,7 @@ def parse_action(completion: str) -> dict[str, Any]:
     except Exception:
         pass
 
-    return {"local_actions": base, "central_action": {}}
+    return {"local_actions": base, "central_action": {}}, True
 
 
 # Anti-reward-hacking properties of this environment:
@@ -92,16 +99,16 @@ def parse_action(completion: str) -> dict[str, Any]:
 # 5. Episode-level final_score prevents short-term gaming
 def reward_fn(prompts, completions, **kwargs):  # type: ignore[no-untyped-def]
     rewards: list[float] = []
-    task_id = kwargs.get("task_id", "hard_multi")
     use_wandb = kwargs.get("use_wandb", False)
 
     for episode, (_, completion) in enumerate(zip(prompts, completions), start=1):
+        task_id = "medium_dynamic" if episode < 20 else kwargs.get("task_id", "hard_multi")
         safe_post(
             f"{ENV_URL}/reset",
             {"task_id": task_id, "central_enabled": True},
         )
 
-        action = parse_action(completion)
+        action, is_hallucinated = parse_action(completion)
         episode_reward = 0.0
         done = False
         step_count = 0
@@ -129,6 +136,9 @@ def reward_fn(prompts, completions, **kwargs):  # type: ignore[no-untyped-def]
             step_count += 1
             time.sleep(0.05)
 
+        if is_hallucinated:
+            episode_reward -= 5.0
+
         log_data = {
             "episode_reward": episode_reward,
             "mean_queue": info.get("mean_queue", 0.0),
@@ -136,9 +146,13 @@ def reward_fn(prompts, completions, **kwargs):  # type: ignore[no-untyped-def]
             "throughput": info.get("throughput", 0.0),
             "step_count": step_count,
             "step_latency_ms": latency_ms,
+            "is_hallucinated": float(is_hallucinated),
         }
         if use_wandb and wandb:
             wandb.log(log_data)
+
+        if episode % 5 == 0:
+            print(f"[DEBUG] reward={episode_reward:.4f} | parsed_action={action}")
 
         if episode % 2 == 0:
             print(f"\n=== Episode {episode} ===")
@@ -202,17 +216,33 @@ def train(args: argparse.Namespace) -> None:
         use_gradient_checkpointing="unsloth",
         random_state=seed,
     )
+    model.generation_config.do_sample = True
+    model.generation_config.temperature = 0.7
+    model.generation_config.top_p = 0.9
 
-    train_dataset = Dataset.from_dict(
-        {
-            "prompt": [
-                "You are a traffic controller. Output a JSON object with keys "
-                "'local_actions' (dict mapping NW/NE/SW/SE to one of KEEP/SWITCH/"
-                "PHASE_0/PHASE_1/PHASE_2/PHASE_3) and 'central_action' (empty dict)."
-            ]
-            * 20
-        }
-    )
+    prompt_bank = [
+        "Control traffic at a 4-way intersection. Output JSON with local_actions and central_action.",
+        "Minimize congestion and waiting time. Return valid JSON actions.",
+        "Optimize traffic flow under heavy load conditions.",
+        "Handle emergency vehicles with priority while keeping flow balanced.",
+        "Reduce queue lengths across all intersections.",
+        "Prevent spillback and gridlock using coordinated actions.",
+        "Balance throughput and fairness across directions.",
+        "Respond to dynamic traffic demand changes efficiently.",
+        "Avoid starvation of any direction while optimizing flow.",
+        "Maximize throughput without increasing waiting time.",
+        "Handle congestion recovery after traffic spikes.",
+        "Ensure smooth transitions between traffic phases.",
+        "Use central coordination to improve global performance.",
+        "Prioritize critical lanes under pressure.",
+        "Optimize intersection switching intelligently.",
+        "Maintain stability while improving efficiency.",
+        "Avoid oscillatory switching behavior.",
+        "Keep traffic flowing evenly across all directions.",
+        "Adapt to changing traffic density dynamically.",
+        "Prevent long queues from forming.",
+    ]
+    train_dataset = Dataset.from_dict({"prompt": prompt_bank * 2})
 
     use_bf16 = torch.cuda.is_available() and torch.cuda.get_device_capability(0)[0] >= 8
     use_fp16 = torch.cuda.is_available() and not use_bf16
@@ -222,14 +252,18 @@ def train(args: argparse.Namespace) -> None:
         learning_rate=5e-6,
         per_device_train_batch_size=args.batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
-        num_train_epochs=3,
-        max_steps=args.max_steps,
+        num_train_epochs=2,
+        max_steps=min(args.max_steps, 80),
         max_prompt_length=512,
-        max_completion_length=128,
+        max_completion_length=64,
         num_generations=4,
         bf16=use_bf16,
         fp16=use_fp16,
         report_to="wandb" if args.wandb else "none",
+        save_strategy="steps",
+        save_steps=10,
+        save_total_limit=3,
+        logging_steps=1,
     )
 
     trainer = GRPOTrainer(
@@ -243,7 +277,22 @@ def train(args: argparse.Namespace) -> None:
     torch.cuda.empty_cache()
     gc.collect()
     print("Trainer ready. Launching training...")
-    trainer.train()
+    ckpts = []
+    if os.path.isdir(training_args.output_dir):
+        ckpts = sorted(
+            [
+                os.path.join(training_args.output_dir, d)
+                for d in os.listdir(training_args.output_dir)
+                if d.startswith("checkpoint-")
+            ],
+            key=lambda x: int(x.split("-")[-1]),
+        )
+    latest_checkpoint = ckpts[-1] if ckpts else None
+    if latest_checkpoint:
+        print(f"Resuming from checkpoint: {latest_checkpoint}")
+        trainer.train(resume_from_checkpoint=latest_checkpoint)
+    else:
+        trainer.train()
     print("\nTraining complete.")
     print(f"GPU memory allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
 
