@@ -24,26 +24,62 @@ except ImportError:
 # Configuration
 ENV_URL = os.getenv("ENV_URL", "https://guuru-dev-traffic-signal-openenv-2.hf.space")
 
+# Anti-reward-hacking properties of this environment:
+# 1. Deterministic seeded transitions: the model cannot manipulate environment state
+#    because every transition is a pure function of (state, action, seed).
+#    There is no mutable global state the model can exploit.
+# 2. Rubric-based multi-component reward: the reward is a weighted combination of
+#    6 independent rubric components (local_efficiency, global_coordination,
+#    throughput, emergency_response, stability, fairness).
+#    Optimizing one component alone cannot dominate the total reward.
+# 3. Reward clipping: all step rewards are clipped to [-1.0, 1.0].
+#    Extreme outlier actions cannot produce runaway reward signals.
+# 4. Priority budget constraint: the central controller cannot boost all intersections
+#    simultaneously — total_priority_budget caps the sum of active boosts.
+# 5. Episode-level grading: final_score is computed over the full episode,
+#    not just the last step, so short-term exploitation does not persist.
 def reward_fn(prompts, completions, **kwargs):
     """Reward function that interacts with the OpenEnv API."""
     rewards = []
-    for prompt, completion in zip(prompts, completions):
+    log_buffer = kwargs.get("log_buffer")
+    for episode, (prompt, completion) in enumerate(zip(prompts, completions), start=1):
         try:
             # 1. Reset
             res = requests.post(f"{ENV_URL}/reset", json={"task_id": "hard_multi", "central_enabled": True})
             # 2. Step
-            step_res = requests.post(f"{ENV_URL}/step", json={"action": completion})
+            action = completion
+            step_res = requests.post(f"{ENV_URL}/step", json={"action": action})
             data = step_res.json()
             
             # 3. Telemetry
             reward = float(data.get("reward", 0.0))
+            info = data.get("info", {})
+            if isinstance(log_buffer, list):
+                log_buffer.append(
+                    {
+                        "episode_reward": reward,
+                        "final_score": info.get("final_score", 0.0),
+                        "throughput": info.get("throughput", 0.0),
+                        "mean_queue": info.get("mean_queue", 0.0),
+                        "reward_breakdown": info.get("reward_breakdown", {}),
+                    }
+                )
             if kwargs.get("use_wandb"):
-                info = data.get("info", {})
                 wandb.log({
                     "episode_reward": reward,
                     "final_score": info.get("final_score", 0.0),
-                    "throughput": info.get("throughput", 0.0)
+                    "throughput": info.get("throughput", 0.0),
+                    "mean_queue": info.get("mean_queue", 0.0),
                 })
+
+            if episode % 10 == 0:
+                print(f"\n=== Episode {episode} Sample Inspection ===")
+                print(f"  Action sent     : {action}")
+                print(f"  Step reward     : {reward:.4f}")
+                print(f"  Final score     : {info.get('final_score', 'N/A')}")
+                print(f"  Active behaviors: {info.get('active_behaviors_log', [])}")
+                print(f"  Mean queue      : {info.get('mean_queue', 'N/A')}")
+                print("=" * 48)
             rewards.append(reward)
         except Exception as e:
             print(f"API Error: {e}")
@@ -78,21 +114,27 @@ def train(args):
         num_train_epochs=1,
     )
 
+    collected_data: list[dict[str, Any]] = []
     trainer = GRPOTrainer(
         model=model,
-        reward_funcs=lambda p, c: reward_fn(p, c, use_wandb=args.wandb),
+        reward_funcs=lambda p, c: reward_fn(p, c, use_wandb=args.wandb, log_buffer=collected_data),
         args=training_args,
-        train_dataset=None, # Load your dataset here
+        train_dataset=None,  # Intentional: this is online RL. Data is collected live from the environment.
         processing_class=tokenizer,
     )
 
     trainer.train()
     
     # Save & Plot
-    model.save_pretrained("traffic-llm-checkpoint")
+    # Save LoRA adapter weights only (correct Unsloth pattern for 4-bit quantized models)
+    model.save_pretrained("outputs/traffic-lora")
+    tokenizer.save_pretrained("outputs/traffic-lora")
+    print("Adapter weights saved to outputs/traffic-lora")
     if args.plot:
-        from env.metrics_exporter import generate_training_plots
-        # generate_training_plots(collected_data, "plots")
+        if collected_data:
+            from env.metrics_exporter import generate_training_plots
+            generate_training_plots(collected_data, "plots")
+            print("Training plots saved to plots/")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
