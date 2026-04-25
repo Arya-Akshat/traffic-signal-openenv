@@ -39,41 +39,36 @@ def find_local_env_port() -> str:
     raise RuntimeError("No local environment found on ports 7860, 8000, 8080, 3000")
 
 
-def safe_post(url: str, payload: dict[str, Any], retries: int = 8, timeout: int = 60) -> requests.Response:
+def safe_post(url: str, payload: dict[str, Any], retries: int = 16, timeout: int = 60) -> requests.Response:
     for attempt in range(retries):
         try:
             resp = requests.post(url, json=payload, timeout=timeout)
-            if resp.status_code in (429, 502, 503):
-                wait = 3 * (attempt + 1)
-                print(f"HTTP {resp.status_code}. Waiting {wait}s (attempt {attempt + 1}/{retries})")
+            if resp.status_code in (429, 500, 502, 503, 504):
+                wait = min(45, 2 * (attempt + 1)) + random.uniform(0.0, 1.0)
+                print(f"HTTP {resp.status_code}. Waiting {wait:.1f}s (attempt {attempt + 1}/{retries})")
                 time.sleep(wait)
                 continue
             resp.raise_for_status()
             return resp
-        except requests.exceptions.Timeout:
-            print(f"Timeout attempt {attempt + 1}. Retrying in 3s...")
-            time.sleep(3)
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+            wait = min(30, 2 + attempt)
+            print(f"Network/timeout error on attempt {attempt + 1}/{retries}. Retrying in {wait}s...")
+            time.sleep(wait)
     raise RuntimeError(f"Failed after {retries} retries: {url}")
 
 
 def parse_action(completion: str) -> dict[str, Any]:
+    valid = {"KEEP", "SWITCH", "PHASE_0", "PHASE_1", "PHASE_2", "PHASE_3"}
+    base = {"NW": "KEEP", "NE": "KEEP", "SW": "KEEP", "SE": "KEEP"}
     try:
         action = json.loads(completion)
         if isinstance(action, dict):
-            if "local_actions" not in action:
-                action["local_actions"] = {
-                    "NW": "KEEP",
-                    "NE": "KEEP",
-                    "SW": "KEEP",
-                    "SE": "KEEP",
-                }
-            if "central_action" not in action:
-                action["central_action"] = {}
-            valid = {"KEEP", "SWITCH", "PHASE_0", "PHASE_1", "PHASE_2", "PHASE_3"}
-            for key, val in action["local_actions"].items():
-                if val not in valid:
-                    action["local_actions"][key] = "KEEP"
-            return action
+            raw_local = action.get("local_actions", {})
+            clean_local: dict[str, str] = {}
+            for key in ("NW", "NE", "SW", "SE"):
+                raw_val = str(raw_local.get(key, "KEEP")).upper().strip() if isinstance(raw_local, dict) else "KEEP"
+                clean_local[key] = raw_val if raw_val in valid else "KEEP"
+            return {"local_actions": clean_local, "central_action": {}}
     except Exception:
         pass
 
@@ -86,10 +81,7 @@ def parse_action(completion: str) -> dict[str, Any]:
     except Exception:
         pass
 
-    return {
-        "local_actions": {"NW": "KEEP", "NE": "KEEP", "SW": "KEEP", "SE": "KEEP"},
-        "central_action": {},
-    }
+    return {"local_actions": base, "central_action": {}}
 
 
 # Anti-reward-hacking properties of this environment:
@@ -118,7 +110,17 @@ def reward_fn(prompts, completions, **kwargs):  # type: ignore[no-untyped-def]
 
         while not done and step_count < 100:
             t0 = time.time()
-            step_res = safe_post(f"{ENV_URL}/step", action)
+            try:
+                step_res = safe_post(f"{ENV_URL}/step", action)
+            except requests.HTTPError as exc:
+                if getattr(exc.response, "status_code", None) == 422:
+                    action = {
+                        "local_actions": {"NW": "KEEP", "NE": "KEEP", "SW": "KEEP", "SE": "KEEP"},
+                        "central_action": {},
+                    }
+                    step_res = safe_post(f"{ENV_URL}/step", action)
+                else:
+                    raise
             latency_ms = (time.time() - t0) * 1000
             data = step_res.json()
             info = data.get("info", {})
@@ -187,7 +189,7 @@ def train(args: argparse.Namespace) -> None:
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name="unsloth/Llama-3.2-1B-Instruct",
         max_seq_length=1024,
-        dtype=torch.bfloat16,
+        dtype=torch.bfloat16 if (torch.cuda.is_available() and torch.cuda.get_device_capability(0)[0] >= 8) else None,
         load_in_4bit=True,
     )
     model = FastLanguageModel.get_peft_model(
@@ -212,6 +214,9 @@ def train(args: argparse.Namespace) -> None:
         }
     )
 
+    use_bf16 = torch.cuda.is_available() and torch.cuda.get_device_capability(0)[0] >= 8
+    use_fp16 = torch.cuda.is_available() and not use_bf16
+
     training_args = GRPOConfig(
         output_dir="./outputs",
         learning_rate=5e-6,
@@ -222,7 +227,8 @@ def train(args: argparse.Namespace) -> None:
         max_prompt_length=512,
         max_completion_length=128,
         num_generations=4,
-        bf16=True,
+        bf16=use_bf16,
+        fp16=use_fp16,
         report_to="wandb" if args.wandb else "none",
     )
 

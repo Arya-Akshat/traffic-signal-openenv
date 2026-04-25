@@ -16,13 +16,23 @@ def run_episode(central_enabled: bool):
     last_info = {}
     
     # Run loop (max 300 steps as per env default)
+    keep_payload = {
+        "local_actions": {"NW": "KEEP", "NE": "KEEP", "SW": "KEEP", "SE": "KEEP"},
+        "central_action": {},
+    }
     for _ in range(300):
         # Using simple local heuristic for demo purposes
-        step_res = requests.post(f"{ENV_URL}/step", json={"action": "KEEP"})
+        step_res = requests.post(f"{ENV_URL}/step", json=keep_payload)
         step_res.raise_for_status()
         data = step_res.json()
         last_info = data.get("info", {})
         if data.get("done"):
+            summary = last_info.get("summary", {})
+            if isinstance(summary, dict):
+                # final_score lives in summary at episode end.
+                last_info["final_score"] = summary.get("final_score", last_info.get("score", 0.0))
+            else:
+                last_info["final_score"] = last_info.get("score", 0.0)
             break
             
     return last_info
